@@ -690,24 +690,7 @@
         cursor: not-allowed;
     }
 
-    /* Modals */
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 1000;
-        animation: fadeIn 0.3s ease;
-    }
-    
-    .modal.show {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+    /* Modals — uses .active class (matches dashboard.css) */
     
     .modal-content {
         background: var(--bg-secondary);
@@ -827,7 +810,7 @@
 <div class="tab-content active" id="wallet-tab">
     <!-- NFT Showcase — all visible, scrolls on overflow -->
     <div class="wallet-section full-width">
-        <h3 style="margin: 0 0 12px; font-size: 16px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> NFT Collection</h3>
+        <h3 style="margin: 0 0 12px; font-size: 16px; display:flex; align-items:center; gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> NFT Collection <button onclick="loadSymbioticNfts()" title="Refresh NFT Collection" style="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;padding:2px 6px;color:inherit;font-size:13px;display:inline-flex;align-items:center;opacity:0.6;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">&#x21bb;</button></h3>
         <div class="nft-showcase">
             <div class="nft-carousel" id="nftCarousel">
                 <!-- Populated dynamically -->
@@ -863,14 +846,19 @@
             </ul>
         </div>
 
-        <!-- Human Wallet -->
+        <!-- Symbiotic Wallet -->
         <div class="wallet-section human-wallet">
             <div class="wallet-header">
-                <div class="wallet-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-                <h3 style="margin: 0; font-size: 16px;">Human Wallet</h3>
+                <div class="wallet-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                <h3 style="margin: 0; font-size: 16px;">Symbiotic Wallet</h3>
+            </div>
+            <div class="wallet-addr-row" id="symbioticAddrRow" style="display:none;">
+                <code id="symbioticAddrShort">Loading...</code>
+                <button class="copy-btn-sm" onclick="copyText(document.getElementById('symbioticFullAddress').value)">📋 Copy</button>
+                <input type="hidden" id="symbioticFullAddress" value="">
             </div>
 
-            <!-- Onboarding (inside human wallet) -->
+            <!-- Onboarding (inside symbiotic wallet) -->
             <div class="onboarding-wizard" id="onboardingWizard">
                 <div class="onboarding-steps" id="onboardingSteps">
                     <!-- Populated by renderOnboarding() -->
@@ -889,6 +877,22 @@
                 <div class="balance-card">
                     <div class="balance-symbol">$RES</div>
                     <div class="balance-amount res">—</div>
+                </div>
+            </div>
+
+            <!-- Send Tokens -->
+            <div class="send-tokens-section" id="sendTokensSection" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
+                <h4 style="margin:0 0 8px; font-size:13px; color:var(--text-muted);">Send Tokens</h4>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="text" id="sendRecipient" placeholder="Recipient wallet address" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:8px 10px; color:inherit; font-size:13px; font-family:monospace;">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="number" id="sendAmount" placeholder="Amount" min="0" step="0.01" style="flex:3; min-width:0; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:8px 10px; color:inherit; font-size:13px;">
+                        <select id="sendToken" style="flex:1; min-width:70px; max-width:90px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:8px 10px; color:inherit; font-size:13px;">
+                            <option value="RES">$RES</option>
+                            <option value="SOL">SOL</option>
+                        </select>
+                    </div>
+                    <button onclick="sendTokens()" class="btn-primary" style="padding:8px 16px; border-radius:6px; font-size:13px; cursor:pointer;">Send</button>
                 </div>
             </div>
         </div>
@@ -1011,11 +1015,11 @@
             <div id="daoTreasury">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <span style="font-size: 12px; color: var(--text-muted);">DAO Wallet</span>
-                    <span style="font-family: var(--mono); font-size: 12px;" id="daoWalletAddr">—</span>
+                    <span style="font-family: var(--mono); font-size: 12px;">77vN...MHYaC</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <span style="font-size: 12px; color: var(--text-muted);">Registration Basket</span>
-                    <span style="font-family: var(--mono); font-size: 12px;" id="basketWalletAddr">—</span>
+                    <span style="font-family: var(--mono); font-size: 12px;">Ga18...d66x9</span>
                 </div>
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
                     <div style="text-align: center;">
@@ -1112,11 +1116,11 @@
 <div class="modal" id="documentModal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3 class="modal-title" id="documentTitle">Document</h3>
+            <h3 class="modal-title" id="documentModalTitle">Document</h3>
             <button class="modal-close" onclick="closeModal('documentModal')">&times;</button>
         </div>
         <div class="modal-body">
-            <div id="documentContent" style="max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.5;"></div>
+            <div id="documentModalBody" style="max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.5;"></div>
             <div style="display: flex; gap: 12px; margin-top: 16px;">
                 <button id="documentSignBtn" onclick="signDocument()" style="flex: 1; background: var(--success); color: white; border: none; padding: 8px; border-radius: 6px;">Co-Sign Document</button>
                 <button onclick="closeModal('documentModal')" style="flex: 1; background: var(--bg-tertiary); color: var(--text); border: none; padding: 8px; border-radius: 6px;">Cancel</button>
@@ -1126,6 +1130,68 @@
 </div>
 
 <script>
+// Utility: copy text to clipboard
+function copyText(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        // Brief visual feedback — find the copy button and flash it
+        const btn = document.querySelector('.copy-btn-sm');
+        if (btn) {
+            const orig = btn.textContent;
+            btn.textContent = '✅ Copied';
+            setTimeout(() => { btn.textContent = orig; }, 1500);
+        }
+    }).catch(() => {
+        // Fallback for non-HTTPS contexts
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+}
+
+// Send tokens from Symbiotic PDA (requires backend endpoint)
+async function sendTokens() {
+    const recipient = document.getElementById('sendRecipient').value.trim();
+    const amount = parseFloat(document.getElementById('sendAmount').value);
+    const token = document.getElementById('sendToken').value;
+    if (!recipient || !amount || amount <= 0) {
+        showToast('Please enter a valid recipient and amount', 'error');
+        return;
+    }
+    if (!connectedAddress) {
+        showToast('Connect your Phantom wallet first', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/wallet/send-tokens', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                network: currentNetwork,
+                sender: connectedAddress,
+                recipient: recipient,
+                amount: amount,
+                token: token
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            showToast(`Sent ${amount} $${token} to ${recipient.slice(0,6)}...`, 'success');
+            document.getElementById('sendRecipient').value = '';
+            document.getElementById('sendAmount').value = '';
+            loadUserWallet();
+        } else {
+            showToast(data.error || 'Transfer failed', 'error');
+        }
+    } catch (e) {
+        console.error('Send error:', e);
+        showToast('Network error — try again', 'error');
+    }
+}
+
 // Configuration
 const SOLANA_NETWORKS = {
     devnet: { name: 'Devnet', rpc: 'https://api.devnet.solana.com' },
@@ -1133,14 +1199,13 @@ const SOLANA_NETWORKS = {
     'mainnet-beta': { name: 'Mainnet', rpc: 'https://api.mainnet-beta.solana.com' }
 };
 
-// Token mints and wallets — configure in dashboard/config.json
 const TOKEN_MINTS = {
-    RCT: 'YOUR_RCT_MINT_ADDRESS',
-    RES: 'YOUR_RES_MINT_ADDRESS'
+    RCT: '2z2GEVqhTVUc6Pb3pzmVTTyBh2BeMHqSw1Xrej8KVUKG',
+    RES: 'DiZuWvmQ6DEwsfz7jyFqXCsMfnJiMVahCj3J5MxkdV5N'
 };
 
-const DAO_WALLET = 'YOUR_DAO_WALLET_ADDRESS';
-const BASKET_WALLET = 'YOUR_BASKET_WALLET_ADDRESS';
+const DAO_WALLET = '77vNjBbKxtGyMnzRbhF1cmQzVdrNq5petrsJWkcMHYaC';
+const BASKET_WALLET = 'Ga18B4nWnQsCqJjQRqQQK74fnmz67rCjRaCw1Gzd66x9';
 
 const REX_CATEGORIES = ['GOV', 'FIN', 'COM', 'CRE', 'TEC'];
 
@@ -1360,42 +1425,90 @@ async function loadAiWallet() {
                 }
             } catch(e) { console.error('tx fetch:', e); }
 
-            // Load NFTs for AI wallet
-            loadAiNfts(addr);
+            // Load NFTs from Symbiotic PDA
+            loadSymbioticNfts();
         }
     } catch (error) {
         console.error('Error loading AI wallet:', error);
     }
 }
 
-async function loadAiNfts(address) {
+// Load NFTs from Symbiotic PDA only
+let _pdaNfts = [];
+let _nftLoadPending = null;
+async function loadSymbioticNfts() {
+    if (!connectedAddress) return;
+    if (_nftLoadPending) return _nftLoadPending;
+    _nftLoadPending = _doLoadSymbioticNfts();
+    try { await _nftLoadPending; } finally { _nftLoadPending = null; }
+}
+async function _doLoadSymbioticNfts() {
+    let allNfts = [];
     try {
-        const response = await fetch(`/api/wallet/owned-nfts?network=${currentNetwork}&address=${address}`);
-        const data = await response.json();
-        if (response.ok && data.nfts && data.nfts.length > 0) {
-            renderNftCarousel(data.nfts);
-        } else {
-            renderNftCarousel([]);
+        // 1. Query Symbiotic PDA (primary — all onboarding NFTs go here)
+        const pairResp = await fetch(`/api/symbiotic/pair-info?humanPubkey=${connectedAddress}&network=${currentNetwork}`);
+        const pairData = await pairResp.json();
+        if (pairResp.ok && pairData.exists && pairData.pda) {
+            const pdaResp = await fetch(`/api/wallet/owned-nfts?network=${currentNetwork}&address=${pairData.pda}`);
+            const pdaData = await pdaResp.json();
+            if (pdaResp.ok && pdaData.nfts) {
+                allNfts.push(...pdaData.nfts);
+            }
+        }
+        // 2. Also query user wallet (legacy mints before PDA routing)
+        // Deduplicate by NFT NAME (type), not mint address.
+        // PDA versions take priority over user-wallet duplicates.
+        const userResp = await fetch(`/api/wallet/owned-nfts?network=${currentNetwork}&address=${connectedAddress}`);
+        const userData = await userResp.json();
+        if (userResp.ok && userData.nfts) {
+            const existingNames = new Set(allNfts.map(n => n.name));
+            for (const nft of userData.nfts) {
+                if (!existingNames.has(nft.name)) allNfts.push(nft);
+            }
         }
     } catch (e) {
-        renderNftCarousel([]);
+        console.error('Error loading NFTs:', e);
     }
+    _pdaNfts = allNfts;
+    renderNftCarousel(_pdaNfts);
 }
 
 async function loadUserWallet() {
     if (!connectedAddress) return;
     
     try {
-        const response = await fetch(`/api/wallet/user?network=${currentNetwork}&address=${connectedAddress}`);
-        const data = await response.json();
+        // Get Symbiotic PDA address — all balances live on PDA, not human wallet
+        const pairResp = await fetch(`/api/symbiotic/pair-info?humanPubkey=${connectedAddress}&network=${currentNetwork}`);
+        const pairData = await pairResp.json();
+        const pdaAddress = pairData.pda || null;
         
-        if (response.ok) {
-            updateWalletBalances('humanWalletBalances', data.balances);
-            updateRctBalance(data.balances);
+        if (pdaAddress) {
+            // Display PDA address with truncation
+            const shortAddr = pdaAddress.slice(0, 6) + '...' + pdaAddress.slice(-4);
+            document.getElementById('symbioticAddrShort').textContent = shortAddr;
+            document.getElementById('symbioticFullAddress').value = pdaAddress;
+            document.getElementById('symbioticAddrRow').style.display = '';
+            document.getElementById('sendTokensSection').style.display = '';
+            window._symbioticPda = pdaAddress;
+
+            const response = await fetch(`/api/wallet/user?network=${currentNetwork}&address=${pdaAddress}`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                updateWalletBalances('humanWalletBalances', data.balances);
+                updateRctBalance(data.balances);
+            }
+        } else {
+            console.warn('No Symbiotic PDA found — balances unavailable');
+            document.getElementById('symbioticAddrRow').style.display = 'none';
+            document.getElementById('sendTokensSection').style.display = 'none';
         }
     } catch (error) {
-        console.error('Error loading user wallet:', error);
+        console.error('Error loading wallet balances:', error);
     }
+    
+    // Load NFTs from Symbiotic PDA (not user personal wallet)
+    loadSymbioticNfts();
 }
 
 function updateWalletBalances(containerId, balances) {
@@ -1635,10 +1748,14 @@ async function showDocument(type) {
         const data = await response.json();
         
         if (response.ok) {
-            document.getElementById('documentTitle').textContent = data.title;
-            document.getElementById('documentContent').innerHTML = data.content;
-            document.getElementById('documentSignBtn').onclick = () => signDocumentWithHash(type, data.hash);
+            document.getElementById('documentModalTitle').textContent = data.title;
+            document.getElementById('documentModalBody').innerHTML = data.content;
+            const signBtn = document.getElementById('documentSignBtn');
+            if (signBtn) signBtn.onclick = () => signDocumentWithHash(type, data.hash);
             showModal('documentModal');
+        } else {
+            const errData = await response.json().catch(() => ({}));
+            showToast(errData.error || 'Error loading document', 'error');
         }
     } catch (error) {
         console.error('Error loading document:', error);
@@ -1843,7 +1960,12 @@ async function loadReputation() {
     if (!connectedAddress) return;
     
     try {
-        const response = await fetch(`/api/wallet/reputation?network=${currentNetwork}&address=${connectedAddress}`);
+        // Query reputation from Symbiotic PDA, not human wallet
+        const pairResp = await fetch(`/api/symbiotic/pair-info?humanPubkey=${connectedAddress}&network=${currentNetwork}`);
+        const pairData = await pairResp.json();
+        const pdaAddress = pairData.pda || connectedAddress;
+        
+        const response = await fetch(`/api/wallet/reputation?network=${currentNetwork}&address=${pdaAddress}`);
         const data = await response.json();
         
         if (response.ok) {
@@ -1940,11 +2062,11 @@ function loadDaoPanel() {
 
 // Utility Functions
 function showModal(modalId) {
-    document.getElementById(modalId).classList.add('show');
+    document.getElementById(modalId).classList.add('active');
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('show');
+    document.getElementById(modalId).classList.remove('active');
 }
 
 function showToast(message, type = 'info') {

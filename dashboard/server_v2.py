@@ -34,6 +34,12 @@ except ImportError:
     TokenManager = None
     SolanaWallet = None
 
+try:
+    from protocol_nft_minter import ProtocolNFTMinter, PROTOCOL_NFTS
+except ImportError:
+    ProtocolNFTMinter = None
+    PROTOCOL_NFTS = {}
+
 # ---------------------------------------------------------------------------
 # Paths & Config
 # ---------------------------------------------------------------------------
@@ -49,24 +55,28 @@ RMEMORY_LOG = RMEMORY_DIR / "r-memory.log"
 RMEMORY_CONFIG = RMEMORY_DIR / "config.json"
 R_AWARENESS_LOG = WORKSPACE / "r-awareness" / "r-awareness.log"
 
-# Solana wallet integration — load from config.json
-import json as _json
-_DASHBOARD_DIR = Path(__file__).parent
-_CFG_PATH = _DASHBOARD_DIR / "config.json"
-with open(_CFG_PATH) as _f:
-    _CFG = _json.load(_f)
+# Solana wallet integration
+_SOLANA_KEYPAIR = Path.home() / ".config" / "solana" / "id.json"
+_DAO_DETAILS = Path.home() / "resonantos-augmentor" / "ssot" / "L2" / "DAO_DETAILS.json"
+_REGISTRATION_BASKET_KEYPAIR = Path.home() / ".config" / "solana" / "dao-registration-basket.json"
+_MIN_SOL_FOR_GAS = 0.01
 
-_SOLANA_KEYPAIR = Path(_CFG["solana"]["keypairPath"]).expanduser()
-_DAO_DETAILS = _DASHBOARD_DIR.parent / _CFG["paths"]["daoDetails"]
-_REGISTRATION_BASKET_KEYPAIR = Path(_CFG["solana"]["daoRegistrationBasketKeypairPath"]).expanduser()
-_MIN_SOL_FOR_GAS = _CFG["solana"]["minSolForGas"]
+_RCT_MINT = "2z2GEVqhTVUc6Pb3pzmVTTyBh2BeMHqSw1Xrej8KVUKG"
+_RES_MINT = "DiZuWvmQ6DEwsfz7jyFqXCsMfnJiMVahCj3J5MxkdV5N"
 
-_RCT_MINT = _CFG["tokens"]["RCT_MINT"]
-_RES_MINT = _CFG["tokens"]["RES_MINT"]
+_SOLANA_RPCS = {
+    "devnet": "https://api.devnet.solana.com",
+    "testnet": "https://api.testnet.solana.com",
+    "mainnet-beta": "https://api.mainnet-beta.solana.com",
+}
 
-_SOLANA_RPCS = _CFG["solana"]["rpcs"]
-
-_REX_MINTS = _CFG["tokens"]["REX_MINTS"]
+_REX_MINTS = {
+    "GOV": "7Zxr6WLPdo5owVwhkuPUKSVRMHGknadBesQExmBSsKpj",
+    "FIN": "zwwrrG6neRMwLY76oZfF41BtLZ7kmqWXpqKCCzDkbaL",
+    "COM": "7sybHSXWfxFeoUoTv78veNZHRkd4UeNhCt3pmkeJU43S",
+    "CRE": "8HQF2jTRouqTcTmzJctGaTPKXkGEk2iyXBmMZ2mrRyKV",
+    "TEC": "9V4oLeX77iFSjr1dnHjKXsAWCNhGcADo6L9CH37zLnBF",
+}
 _REX_DISPLAY = {
     "GOV": "Governance Contribution",
     "FIN": "Financial Contribution",
@@ -76,13 +86,13 @@ _REX_DISPLAY = {
 }
 
 # RCT Safety Caps
-_RCT_MAX_PER_WALLET_YEAR = _CFG["rctCaps"]["maxPerWalletYear"]
-_RCT_DAILY_PER_HOLDER = _CFG["rctCaps"]["dailyPerHolder"]
-_RCT_DAILY_FLOOR = _CFG["rctCaps"]["dailyFloor"]
-_RCT_DAILY_MAX = _CFG["rctCaps"]["dailyMax"]
-_RCT_DECIMALS = _CFG["rctCaps"]["decimals"]
-_RCT_CAPS_FILE = _DASHBOARD_DIR.parent / _CFG["paths"]["rctCapsFile"]
-_ONBOARDING_FILE = _DASHBOARD_DIR.parent / _CFG["paths"]["onboardingFile"]
+_RCT_MAX_PER_WALLET_YEAR = 10_000
+_RCT_DAILY_PER_HOLDER = 30
+_RCT_DAILY_FLOOR = 300
+_RCT_DAILY_MAX = 100_000
+_RCT_DECIMALS = 9
+_RCT_CAPS_FILE = Path.home() / "resonantos-augmentor" / "data" / "rct_caps.json"
+_ONBOARDING_FILE = Path.home() / "resonantos-augmentor" / "data" / "onboarding.json"
 _DAILY_CLAIMS_FILE = Path.home() / "resonantos-augmentor" / "data" / "daily_claims.json"
 
 # Level thresholds for reputation
@@ -157,6 +167,11 @@ def _load_onboarding():
 def _save_onboarding(data):
     _ONBOARDING_FILE.parent.mkdir(parents=True, exist_ok=True)
     _ONBOARDING_FILE.write_text(json.dumps(data, indent=2))
+
+def _require_identity_nft(wallet_address):
+    """Return True if wallet holds Identity NFT, else False."""
+    onboarding = _load_onboarding()
+    return onboarding.get(wallet_address, {}).get("identityNftMinted", False)
 
 def _load_daily_claims():
     try: return json.loads(_DAILY_CLAIMS_FILE.read_text())
@@ -534,6 +549,17 @@ def chatbots_page():
 @app.route("/wallet")
 def wallet_page():
     return render_template("wallet.html", active_page="wallet")
+
+@app.route("/protocol-store")
+def protocol_store_page():
+    cfg = {}
+    cfg_path = Path(__file__).parent / "config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text())
+        except Exception:
+            pass
+    return render_template("protocol-store.html", active_page="protocol-store", config=cfg)
 
 @app.route("/docs")
 def docs_page():
@@ -938,7 +964,8 @@ def api_wallet_user():
         
         # Get last claim time
         claims = _load_daily_claims()
-        last_claim = claims.get(address, {}).get("last_claim")
+        claim_val = claims.get(address)
+        last_claim = claim_val if isinstance(claim_val, str) else (claim_val.get("last_claim") if isinstance(claim_val, dict) else None)
         
         return jsonify({
             "address": address,
@@ -988,40 +1015,67 @@ def api_wallet_mint_nft():
         # Determine fee payer
         fee_payer_path, fee_payer_label = _get_fee_payer(network, recipient)
         
-        # Mint NFT
-        nft_minter = NFTMinter(network)
+        # Mint NFT to Symbiotic PDA (not user wallet)
+        pda_address = _derive_symbiotic_pda(recipient)
+        nft_minter = NFTMinter(SolanaWallet(network=network))
         nft_result = nft_minter.mint_soulbound_nft(
-            recipient=recipient,
-            metadata={
-                "name": f"ResonantOS {nft_type.replace('_', ' ').title()}",
-                "symbol": "ROS-NFT",
-                "description": f"Soulbound NFT for ResonantOS {nft_type}",
-                "soulbound": True
-            },
-            fee_payer=fee_payer_path
+            recipient=pda_address,
+            nft_type=nft_type,
+            name=f"ResonantOS {nft_type.replace('_', ' ').title()}",
+            symbol="ROS-NFT",
+            fee_payer_keypair=fee_payer_path
         )
         
         # Mint reward tokens
-        token_manager = TokenManager(network)
+        token_manager = TokenManager(SolanaWallet(network=network))
         
-        # Mint RCT
+        # Mint RCT (Token-2022) → Symbiotic PDA
         rct_result = token_manager.mint_tokens(
             mint=_RCT_MINT,
-            recipient=recipient,
+            destination_owner=pda_address,
             amount=reward["rct"] * (10 ** _RCT_DECIMALS),
-            fee_payer=fee_payer_path
+            token_program="token2022"
         )
         
-        # Mint RES  
+        # Mint RES (SPL) → Symbiotic PDA
         res_result = token_manager.mint_tokens(
             mint=_RES_MINT,
-            recipient=recipient,
-            amount=reward["res"] * (10 ** 9),  # Assuming 9 decimals for RES
-            fee_payer=fee_payer_path
+            destination_owner=pda_address,
+            amount=reward["res"] * (10 ** 6),
+            token_program="spl"
         )
         
         # Record RCT mint for cap tracking
         _record_rct_mint(recipient, reward["rct"])
+        
+        # Update NFT registry for display name resolution
+        try:
+            reg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "nft_registry.json")
+            registry = {}
+            if os.path.exists(reg_path):
+                with open(reg_path) as rf:
+                    registry = json.load(rf)
+            nft_mint_addr = nft_result.get("mint")
+            if nft_mint_addr:
+                registry[nft_mint_addr] = nft_type  # "identity" or "alpha_tester" → map alpha_tester to "alpha"
+                if nft_type == "alpha_tester":
+                    registry[nft_mint_addr] = "alpha"
+                with open(reg_path, "w") as wf:
+                    json.dump(registry, wf, indent=2)
+        except Exception as e:
+            print(f"Warning: could not update nft_registry: {e}")
+        
+        # Update onboarding status
+        onboarding = _load_onboarding()
+        if recipient not in onboarding:
+            onboarding[recipient] = {}
+        if nft_type == "identity":
+            onboarding[recipient]["identityNftMinted"] = True
+            onboarding[recipient]["identityNftMint"] = nft_result.get("mint")
+        elif nft_type == "alpha_tester":
+            onboarding[recipient]["alphaNftMinted"] = True
+            onboarding[recipient]["alphaNftMint"] = nft_result.get("mint")
+        _save_onboarding(onboarding)
         
         return jsonify({
             "success": True,
@@ -1030,12 +1084,46 @@ def api_wallet_mint_nft():
             "resAmount": reward["res"],
             "feePayer": fee_payer_label,
             "transactions": {
-                "nft": nft_result.get("signature"),
-                "rct": rct_result.get("signature"),
-                "res": res_result.get("signature")
+                "nft": nft_result.get("signature") if isinstance(nft_result, dict) else str(nft_result),
+                "rct": rct_result if isinstance(rct_result, str) else rct_result if isinstance(rct_result, str) else rct_result.get("signature"),
+                "res": res_result if isinstance(res_result, str) else res_result if isinstance(res_result, str) else res_result.get("signature")
             }
         })
         
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/wallet/send-tokens", methods=["POST"])
+def api_wallet_send_tokens():
+    """Transfer tokens from sender's Symbiotic PDA to a recipient address."""
+    try:
+        if not TokenManager:
+            return jsonify({"error": "Token toolkit not available"}), 503
+        data = request.get_json(force=True)
+        network = data.get("network", "devnet")
+        sender = data.get("sender")       # human pubkey
+        recipient = data.get("recipient")  # destination wallet
+        amount = float(data.get("amount", 0))
+        token = data.get("token", "RCT")  # RCT or RES
+
+        if not sender or not recipient or amount <= 0:
+            return jsonify({"error": "Missing sender, recipient, or valid amount"}), 400
+
+        # Verify sender has Identity NFT
+        onboarding = _load_onboarding()
+        user_data = onboarding.get(sender, {})
+        if not user_data.get("identityNftMinted"):
+            return jsonify({"error": "Identity NFT required to send tokens"}), 403
+
+        pda_address = _derive_symbiotic_pda(sender)
+        wallet = SolanaWallet(network=network)
+
+        # PDA transfers require a CPI instruction in the Symbiotic Anchor program.
+        # The PDA is owned by the on-chain program — only the program can authorize transfers.
+        return jsonify({"error": f"Transfers from Symbiotic PDA not yet available. Requires a program-level transfer instruction (CPI). Coming soon."}), 501
+
+        return jsonify({"success": True, "signature": result.get("signature", ""), "amount": amount, "token": token})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -1058,6 +1146,10 @@ def api_wallet_daily_claim():
         
         if not recipient or not signature:
             return jsonify({"error": "recipient and signature required"}), 400
+        
+        # Require Identity NFT
+        if not _require_identity_nft(recipient):
+            return jsonify({"error": "Identity NFT required. Complete onboarding first."}), 403
         
         # Check 24h cooldown
         claims = _load_daily_claims()
@@ -1083,22 +1175,23 @@ def api_wallet_daily_claim():
         fee_payer_path, fee_payer_label = _get_fee_payer(network, recipient)
         
         # Mint tokens
-        token_manager = TokenManager(network)
+        token_manager = TokenManager(SolanaWallet(network=network))
+        pda_address = _derive_symbiotic_pda(recipient)
         
-        # Mint 1 RCT
+        # Mint 1 RCT → Symbiotic PDA
         rct_result = token_manager.mint_tokens(
             mint=_RCT_MINT,
-            recipient=recipient,
+            destination_owner=pda_address,
             amount=1 * (10 ** _RCT_DECIMALS),
-            fee_payer=fee_payer_path
+            token_program="token2022"
         )
         
-        # Mint 500 RES
+        # Mint 500 RES → Symbiotic PDA
         res_result = token_manager.mint_tokens(
             mint=_RES_MINT,
-            recipient=recipient,
-            amount=500 * (10 ** 9),  # Assuming 9 decimals for RES
-            fee_payer=fee_payer_path
+            destination_owner=pda_address,
+            amount=500 * (10 ** 6),
+            token_program="spl"
         )
         
         # Record claim and RCT mint
@@ -1116,8 +1209,8 @@ def api_wallet_daily_claim():
             "feePayer": fee_payer_label,
             "nextClaimAvailable": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
             "transactions": {
-                "rct": rct_result.get("signature"),
-                "res": res_result.get("signature")
+                "rct": rct_result if isinstance(rct_result, str) else rct_result.get("signature"),
+                "res": res_result if isinstance(res_result, str) else res_result.get("signature")
             }
         })
         
@@ -1217,20 +1310,23 @@ def api_wallet_sign_license():
         
         _save_onboarding(onboarding)
         
-        # Mint License NFT
+        # Mint License NFT to Symbiotic PDA
         fee_payer_path, fee_payer_label = _get_fee_payer(network, address)
+        pda_address = _derive_symbiotic_pda(address)
         
-        nft_minter = NFTMinter(network)
+        nft_minter = NFTMinter(SolanaWallet(network=network))
         nft_result = nft_minter.mint_soulbound_nft(
-            recipient=address,
-            metadata={
-                "name": "Resonant Commons License Signatory",
-                "symbol": "RC-LIC",
-                "description": "Co-signatory of the Resonant Commons Symbiotic License v1.0",
-                "soulbound": True
-            },
-            fee_payer=fee_payer_path
+            recipient=pda_address,
+            nft_type="symbiotic_license",
+            name="Resonant Commons License Signatory",
+            symbol="RC-LIC",
+            fee_payer_keypair=fee_payer_path
         )
+        
+        # Store NFT mint in onboarding record
+        if nft_result.get("mint"):
+            onboarding[address]["licenseNft"] = nft_result["mint"]
+            _save_onboarding(onboarding)
         
         return jsonify({
             "success": True,
@@ -1278,20 +1374,23 @@ def api_wallet_sign_manifesto():
         
         _save_onboarding(onboarding)
         
-        # Mint Manifesto NFT
+        # Mint Manifesto NFT to Symbiotic PDA
         fee_payer_path, fee_payer_label = _get_fee_payer(network, address)
+        pda_address = _derive_symbiotic_pda(address)
         
-        nft_minter = NFTMinter(network)
+        nft_minter = NFTMinter(SolanaWallet(network=network))
         nft_result = nft_minter.mint_soulbound_nft(
-            recipient=address,
-            metadata={
-                "name": "Augmentatism Manifesto Signatory",
-                "symbol": "AUG-MAN",
-                "description": "Co-signatory of the Augmentatism Manifesto v2.2",
-                "soulbound": True
-            },
-            fee_payer=fee_payer_path
+            recipient=pda_address,
+            nft_type="manifesto",
+            name="Augmentatism Manifesto Signatory",
+            symbol="AUG-MAN",
+            fee_payer_keypair=fee_payer_path
         )
+        
+        # Store NFT mint in onboarding record
+        if nft_result.get("mint"):
+            onboarding[address]["manifestoNft"] = nft_result["mint"]
+            _save_onboarding(onboarding)
         
         return jsonify({
             "success": True,
@@ -1386,6 +1485,10 @@ def api_wallet_grant_xp():
         if not recipient or not category or category not in _REX_MINTS:
             return jsonify({"error": "recipient and valid category required"}), 400
         
+        # Require Identity NFT
+        if not _require_identity_nft(recipient):
+            return jsonify({"error": "Identity NFT required. Complete onboarding first."}), 403
+        
         # Check RCT cap for the 10 RCT bonus
         can_mint, reason = _check_rct_cap(recipient, 10)
         if not can_mint:
@@ -1394,22 +1497,23 @@ def api_wallet_grant_xp():
         # Determine fee payer
         fee_payer_path, fee_payer_label = _get_fee_payer(network, recipient)
         
-        token_manager = TokenManager(network)
+        token_manager = TokenManager(SolanaWallet(network=network))
+        pda_address = _derive_symbiotic_pda(recipient)
         
-        # Mint REX tokens (assuming 9 decimals)
+        # Mint REX tokens (Token-2022, 0 decimals) → Symbiotic PDA
         rex_result = token_manager.mint_tokens(
             mint=_REX_MINTS[category],
-            recipient=recipient,
-            amount=amount * (10 ** 9),
-            fee_payer=fee_payer_path
+            destination_owner=pda_address,
+            amount=amount,
+            token_program="token2022"
         )
         
-        # Mint 10 RCT bonus
+        # Mint 10 RCT bonus → Symbiotic PDA
         rct_result = token_manager.mint_tokens(
             mint=_RCT_MINT,
-            recipient=recipient,
+            destination_owner=pda_address,
             amount=10 * (10 ** _RCT_DECIMALS),
-            fee_payer=fee_payer_path
+            token_program="token2022"
         )
         
         # Record RCT mint
@@ -1423,8 +1527,8 @@ def api_wallet_grant_xp():
             "rctBonus": 10,
             "feePayer": fee_payer_label,
             "transactions": {
-                "rex": rex_result.get("signature"),
-                "rct": rct_result.get("signature")
+                "rex": rex_result if isinstance(rex_result, str) else rex_result.get("signature"),
+                "rct": rct_result if isinstance(rct_result, str) else rct_result.get("signature")
             }
         })
         
@@ -1434,84 +1538,344 @@ def api_wallet_grant_xp():
 
 @app.route("/api/wallet/leaderboard")
 def api_wallet_leaderboard():
-    """Rankings by RCT and REX categories."""
+    """Rankings by RCT and REX categories — only Identity NFT holders."""
     try:
         network = request.args.get("network", "devnet")
         
         leaderboard = {"network": network, "overall": [], "categories": {}}
         
-        # Get RCT (overall) leaderboard
-        try:
-            result = _solana_rpc(network, "getTokenLargestAccounts", [_RCT_MINT])
-            accounts = result.get("result", {}).get("value", [])
-            
-            for i, account in enumerate(accounts[:10]):
-                owner = account.get("address")
+        # Load onboarding data — only include users with Identity NFT
+        onboarding = _load_onboarding()
+        identity_holders = {
+            addr for addr, data in onboarding.items()
+            if data.get("identityNftMinted")
+        }
+
+        # Build PDA→human mapping for all identity holders
+        pda_to_human = {}
+        for human_addr in identity_holders:
+            try:
+                pda = _derive_symbiotic_pda(human_addr)
+                pda_to_human[pda] = human_addr
+            except Exception:
+                pass
+
+        # Helper: resolve token account (ATA) → owner address
+        def _resolve_owner(network, ata_address):
+            try:
+                info = _solana_rpc(network, "getAccountInfo", [
+                    ata_address, {"encoding": "jsonParsed"}
+                ])
+                parsed = (info.get("result", {}).get("value", {})
+                          .get("data", {}).get("parsed", {})
+                          .get("info", {}))
+                return parsed.get("owner", ata_address)
+            except Exception:
+                return ata_address
+
+        # Helper: build ranked list — tokens live on PDAs now
+        def _build_board(mint, decimals, max_entries):
+            if not identity_holders:
+                return []
+            try:
+                result = _solana_rpc(network, "getTokenLargestAccounts", [mint])
+                accounts = result.get("result", {}).get("value", [])
+            except Exception as e:
+                print(f"Error getting largest accounts for {mint}: {e}")
+                return []
+
+            board = []
+            for account in accounts:
+                if len(board) >= max_entries:
+                    break
+
+                ata = account.get("address")
                 amount = account.get("amount")
-                decimals = account.get("decimals", _RCT_DECIMALS)
-                balance = int(amount) / (10 ** decimals) if amount else 0
-                
-                # Compute level
+                dec = account.get("decimals", decimals)
+                balance = int(amount) / (10 ** dec) if amount else 0
+                if balance <= 0:
+                    continue
+
+                owner = _resolve_owner(network, ata)
+
+                # Owner could be a PDA or a human wallet
+                # Accept if owner IS an identity holder (human wallet)
+                # OR if owner is a PDA that maps to an identity holder
+                human_addr = pda_to_human.get(owner)
+                if human_addr:
+                    display_addr = human_addr  # show human wallet, not PDA
+                elif owner in identity_holders:
+                    display_addr = owner
+                else:
+                    continue  # skip non-identity-holder wallets
+
                 level = 0
                 for j, threshold in enumerate(_LEVEL_THRESHOLDS):
                     if balance >= threshold:
                         level = j
                     else:
                         break
-                
-                leaderboard["overall"].append({
-                    "rank": i + 1,
-                    "address": owner,
+
+                board.append({
+                    "rank": len(board) + 1,
+                    "address": display_addr,
                     "balance": balance,
                     "level": level
                 })
-        except Exception as e:
-            print(f"Error getting RCT leaderboard: {e}")
+            return board
         
-        # Get REX category leaderboards
+        # Overall RCT leaderboard
+        leaderboard["overall"] = _build_board(_RCT_MINT, _RCT_DECIMALS, 10)
+        
+        # REX category leaderboards
         for category, mint in _REX_MINTS.items():
-            try:
-                result = _solana_rpc(network, "getTokenLargestAccounts", [mint])
-                accounts = result.get("result", {}).get("value", [])
-                
-                category_board = []
-                for i, account in enumerate(accounts[:5]):  # Top 5 per category
-                    owner = account.get("address")
-                    amount = account.get("amount")
-                    decimals = account.get("decimals", 9)
-                    balance = int(amount) / (10 ** decimals) if amount else 0
-                    
-                    # Compute level
-                    level = 0
-                    for j, threshold in enumerate(_LEVEL_THRESHOLDS):
-                        if balance >= threshold:
-                            level = j
-                        else:
-                            break
-                    
-                    category_board.append({
-                        "rank": i + 1,
-                        "address": owner,
-                        "balance": balance,
-                        "level": level
-                    })
-                
-                leaderboard["categories"][category] = {
-                    "display": _REX_DISPLAY[category],
-                    "rankings": category_board
-                }
-            except Exception as e:
-                print(f"Error getting {category} leaderboard: {e}")
-                leaderboard["categories"][category] = {
-                    "display": _REX_DISPLAY[category],
-                    "rankings": []
-                }
+            leaderboard["categories"][category] = {
+                "display": _REX_DISPLAY[category],
+                "rankings": _build_board(mint, 9, 5)
+            }
         
         return jsonify(leaderboard)
         
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
+# Protocol Store API
+# ---------------------------------------------------------------------------
+
+# Track minted protocol NFTs: {protocol_id: {wallet: mint_address}}
+_PROTOCOL_MINTS_FILE = Path(__file__).parent / "data" / "protocol_mints.json"
+
+def _load_protocol_mints():
+    try:
+        if _PROTOCOL_MINTS_FILE.exists():
+            return json.loads(_PROTOCOL_MINTS_FILE.read_text())
+    except Exception:
+        pass
+    return {}
+
+def _save_protocol_mints(data):
+    _PROTOCOL_MINTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _PROTOCOL_MINTS_FILE.write_text(json.dumps(data, indent=2))
+
+@app.route("/api/protocol-store/list", methods=["GET"])
+def api_protocol_store_list():
+    """List available protocols with prices and creator info."""
+    # Add creator to each protocol (Manolo's wallet for all official ones)
+    enriched = {}
+    for pid, pdata in PROTOCOL_NFTS.items():
+        enriched[pid] = {**pdata, "creator": "vbYQ7rZu19Rjtro9obQxFeHq5UPNF5RQXA8jP8qywfF"}
+    return jsonify({"protocols": enriched})
+
+@app.route("/api/protocol-store/purchase", methods=["POST"])
+def api_protocol_store_purchase():
+    """Purchase a protocol NFT. Body: {protocol_id, wallet_address, network}"""
+    try:
+        if not ProtocolNFTMinter:
+            return jsonify({"error": "Protocol NFT minter not available"}), 500
+
+        data = request.get_json() or {}
+        protocol_id = data.get("protocol_id")
+        wallet_address = data.get("wallet_address")
+        network = data.get("network", "devnet")
+
+        if network != "devnet":
+            return jsonify({"error": "Only devnet supported during alpha"}), 400
+
+        if not protocol_id or not wallet_address:
+            return jsonify({"error": "protocol_id and wallet_address required"}), 400
+
+        # Require Identity NFT
+        if not _require_identity_nft(wallet_address):
+            return jsonify({"error": "Identity NFT required. Complete onboarding first."}), 403
+
+        if protocol_id not in PROTOCOL_NFTS:
+            return jsonify({"error": f"Unknown protocol: {protocol_id}"}), 400
+
+        # Check if already purchased
+        mints = _load_protocol_mints()
+        wallet_mints = mints.get(wallet_address, {})
+        if protocol_id in wallet_mints:
+            return jsonify({
+                "error": "Already purchased",
+                "mint": wallet_mints[protocol_id]
+            }), 409
+
+        # Use Registration Basket as fee payer
+        fee_payer = str(_REGISTRATION_BASKET_KEYPAIR)
+
+        minter = ProtocolNFTMinter()
+        result = minter.mint_protocol_nft(
+            recipient=wallet_address,
+            protocol_id=protocol_id,
+            fee_payer_keypair=fee_payer,
+        )
+
+        # Record the mint
+        if wallet_address not in mints:
+            mints[wallet_address] = {}
+        mints[wallet_address][protocol_id] = result["mint"]
+        _save_protocol_mints(mints)
+
+        return jsonify({
+            "success": True,
+            "mint": result["mint"],
+            "ata": result["ata"],
+            "protocol_id": protocol_id,
+            "name": result["name"],
+            "symbol": result["symbol"],
+            "signature": result["mint_signature"],
+            "transferable": True,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/protocol-store/owned", methods=["GET"])
+def api_protocol_store_owned():
+    """Check which protocols a wallet owns. Query: ?wallet=<address>"""
+    try:
+        wallet = request.args.get("wallet")
+        if not wallet:
+            return jsonify({"error": "wallet parameter required"}), 400
+
+        mints = _load_protocol_mints()
+        wallet_mints = mints.get(wallet, {})
+
+        owned = []
+        for protocol_id, mint_address in wallet_mints.items():
+            # Optionally verify on-chain ownership
+            if ProtocolNFTMinter:
+                try:
+                    minter = ProtocolNFTMinter()
+                    if minter.check_ownership(wallet, mint_address):
+                        owned.append({"protocol_id": protocol_id, "mint": mint_address})
+                except Exception:
+                    # If check fails, trust the local record
+                    owned.append({"protocol_id": protocol_id, "mint": mint_address})
+            else:
+                owned.append({"protocol_id": protocol_id, "mint": mint_address})
+
+        return jsonify({"wallet": wallet, "owned": owned})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/protocol-store/content/<protocol_id>", methods=["GET"])
+def api_protocol_store_content(protocol_id):
+    """Get protocol content (SOUL.md) if wallet owns the NFT. Query: ?wallet=<address>&mint=<mint_address>"""
+    try:
+        wallet = request.args.get("wallet")
+        mint_address = request.args.get("mint")
+
+        if not wallet or not mint_address:
+            return jsonify({"error": "wallet and mint parameters required"}), 400
+
+        if protocol_id not in PROTOCOL_NFTS:
+            return jsonify({"error": f"Unknown protocol: {protocol_id}"}), 404
+
+        # Verify ownership
+        mints = _load_protocol_mints()
+        wallet_mints = mints.get(wallet, {})
+        if protocol_id not in wallet_mints or wallet_mints[protocol_id] != mint_address:
+            return jsonify({"error": "You do not own this protocol NFT"}), 403
+
+        # On-chain verification if available
+        if ProtocolNFTMinter:
+            try:
+                minter = ProtocolNFTMinter()
+                if not minter.check_ownership(wallet, mint_address):
+                    return jsonify({"error": "On-chain ownership verification failed"}), 403
+            except Exception:
+                pass  # Fall through if RPC fails
+
+        # Read protocol content
+        protocol_file = Path(__file__).parent / "protocols" / f"{protocol_id}.md"
+        if not protocol_file.exists():
+            return jsonify({"error": "Protocol content not available"}), 404
+
+        content = protocol_file.read_text()
+        return jsonify({
+            "protocol_id": protocol_id,
+            "name": PROTOCOL_NFTS[protocol_id]["name"],
+            "content": content,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
+# Marketplace API (secondary market — all state on-chain via escrow program)
+# ---------------------------------------------------------------------------
+# Program: 5wpGj4EG6J5uEqozLqUyHzEQbU26yjaL5aUE5FwBiYe5 (DevNet)
+# No server-side state. Listings read from Solana. Transactions signed by Phantom.
+
+_MARKETPLACE_PROGRAM_ID = "5wpGj4EG6J5uEqozLqUyHzEQbU26yjaL5aUE5FwBiYe5"
+_RCT_SELL_THRESHOLD = 500
+
+try:
+    from marketplace_client import get_all_listings, MARKETPLACE_PROGRAM_ID
+except ImportError:
+    get_all_listings = None
+    MARKETPLACE_PROGRAM_ID = _MARKETPLACE_PROGRAM_ID
+
+
+@app.route("/api/protocol-store/marketplace", methods=["GET"])
+def api_marketplace_list():
+    """List active marketplace listings from chain."""
+    try:
+        if get_all_listings is None:
+            return jsonify({"listings": [], "warning": "marketplace_client not available"})
+
+        network = request.args.get("network", "devnet")
+        rpc = _SOLANA_RPCS.get(network, _SOLANA_RPCS["devnet"])
+        listings = get_all_listings(rpc=rpc)
+
+        # Enrich with protocol metadata from known mints
+        mints_file = Path(__file__).parent.parent / "data" / "protocol_mints.json"
+        mint_to_protocol = {}
+        if mints_file.exists():
+            records = json.loads(mints_file.read_text())
+            for r in records.get("mints", []):
+                mint_to_protocol[r["mint"]] = r.get("protocol_id", "")
+
+        for l in listings:
+            pid = mint_to_protocol.get(l["nft_mint"], "")
+            l["protocol_id"] = pid
+            if pid in PROTOCOL_NFTS:
+                l["protocol_name"] = PROTOCOL_NFTS[pid]["name"]
+                l["symbol"] = PROTOCOL_NFTS[pid]["symbol"]
+                l["description"] = PROTOCOL_NFTS[pid].get("description", "")
+                l["image"] = PROTOCOL_NFTS[pid].get("image", "")
+
+        return jsonify({"listings": listings, "program_id": _MARKETPLACE_PROGRAM_ID})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"listings": [], "error": str(e)})
+
+
+@app.route("/api/protocol-store/marketplace/config", methods=["GET"])
+def api_marketplace_config():
+    """Return marketplace program config for frontend transaction building."""
+    return jsonify({
+        "program_id": _MARKETPLACE_PROGRAM_ID,
+        "res_mint": _RES_MINT,
+        "res_decimals": 6,
+        "rct_sell_threshold": _RCT_SELL_THRESHOLD,
+        "token_2022_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "spl_token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "associated_token_program": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    })
+
+
+# ---------------------------------------------------------------------------
+# End Protocol Store & Marketplace API
+# ---------------------------------------------------------------------------
 
 @app.route("/api/wallet/document")
 def api_wallet_document():
@@ -1523,7 +1887,13 @@ def api_wallet_document():
             # Try to read from templates/license.html
             license_path = Path(__file__).parent / "templates" / "license.html"
             if license_path.exists():
-                content = license_path.read_text()
+                import re
+                raw = license_path.read_text()
+                # Strip Jinja extends/block lines entirely
+                content = re.sub(r'\{%\s*extends.*?%\}\s*', '', raw)
+                content = re.sub(r'\{%\s*block\s+title\s*%\}.*?\{%\s*endblock\s*%\}\s*', '', content)
+                content = re.sub(r'\{%\s*(?:end)?block\s+\w+\s*%\}\s*', '', content)
+                content = content.strip()
                 return jsonify({
                     "type": "license",
                     "title": "Resonant Commons Symbiotic License (RC-SL) v1.0",
@@ -1630,18 +2000,73 @@ def api_wallet_owned_nfts():
                             nft_data.update({"name": "AI Artisan Alpha Tester", "tag": "Early Adopter", "img": "/static/img/nfts/alpha-tester.png"})
                             matched = True; break
                     
-                    # Fallback: cycle through NFT images for unidentified soulbound tokens
+                    # Fallback 0: check nft_registry.json
                     if not matched:
-                        _fallback_images = [
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/ai-identity.png"},
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/alpha-tester.png"},
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/dao-genesis.png"},
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/founder.png"},
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/manifesto.png"},
-                            {"name": "Soulbound NFT", "img": "/static/img/nfts/symbiotic-license.png"},
-                        ]
-                        idx = len(nfts) % len(_fallback_images)
-                        nft_data.update({"name": _fallback_images[idx]["name"], "img": _fallback_images[idx]["img"]})
+                        try:
+                            reg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "nft_registry.json")
+                            if os.path.exists(reg_path):
+                                with open(reg_path) as rf:
+                                    registry = json.load(rf)
+                                nft_type_key = registry.get(mint)
+                                if nft_type_key:
+                                    _type_display = {
+                                        "identity": {"name": "Augmentor Identity", "tag": "AI Agent NFT", "img": "/static/img/nfts/ai-identity.png"},
+                                        "alpha": {"name": "AI Artisan Alpha Tester", "tag": "Early Adopter", "img": "/static/img/nfts/alpha-tester.png"},
+                                        "license": {"name": "Symbiotic License", "tag": "Co-signed Agreement", "img": "/static/img/nfts/symbiotic-license.png"},
+                                        "manifesto": {"name": "Augmentatism Manifesto", "tag": "Co-signed Commitment", "img": "/static/img/nfts/manifesto.png"},
+                                        "founder": {"name": "ResonantOS Founder", "tag": "Founder", "img": "/static/img/nfts/founder.png"},
+                                        "dao_genesis": {"name": "DAO Genesis", "tag": "Genesis", "img": "/static/img/nfts/dao-genesis.png"},
+                                    }
+                                    if nft_type_key in _type_display:
+                                        nft_data.update(_type_display[nft_type_key])
+                                        matched = True
+                        except Exception as e:
+                            print(f"Error reading nft_registry: {e}")
+
+                    # Fallback 1: try on-chain metadata
+                    if not matched:
+                        # Map known names to display info
+                        _name_map = {
+                            "Augmentor Identity": {"name": "Augmentor Identity", "tag": "AI Agent NFT", "img": "/static/img/nfts/ai-identity.png"},
+                            "AI Artisan — Alpha Tester": {"name": "AI Artisan Alpha Tester", "tag": "Early Adopter", "img": "/static/img/nfts/alpha-tester.png"},
+                            "AI Artisan — Alpha": {"name": "AI Artisan Alpha Tester", "tag": "Early Adopter", "img": "/static/img/nfts/alpha-tester.png"},
+                            "Symbiotic License Agreement": {"name": "Symbiotic License", "tag": "Co-signed Agreement", "img": "/static/img/nfts/symbiotic-license.png"},
+                            "Augmentatism Manifesto": {"name": "Augmentatism Manifesto", "tag": "Co-signed Commitment", "img": "/static/img/nfts/manifesto.png"},
+                            "ResonantOS Founder": {"name": "ResonantOS Founder", "tag": "Founder", "img": "/static/img/nfts/founder.png"},
+                            "Resonant Economy DAO Genesis": {"name": "DAO Genesis", "tag": "Genesis", "img": "/static/img/nfts/dao-genesis.png"},
+                        }
+                        # Try reading on-chain metadata from mint account
+                        try:
+                            mint_info = _solana_rpc(network, "getAccountInfo", [
+                                mint, {"encoding": "jsonParsed"}
+                            ])
+                            mint_data = mint_info.get("result", {}).get("value", {}).get("data", {})
+                            # Token-2022 parsed data may include extensions with metadata
+                            extensions = []
+                            if isinstance(mint_data, dict):
+                                parsed_info = mint_data.get("parsed", {}).get("info", {})
+                                extensions = parsed_info.get("extensions", [])
+                            for ext in extensions:
+                                if ext.get("extension") == "tokenMetadata":
+                                    state = ext.get("state", {})
+                                    onchain_name = state.get("name", "").strip().rstrip("\x00")
+                                    if onchain_name:
+                                        # Try matching against known names
+                                        for known_name, info in _name_map.items():
+                                            if known_name.lower() in onchain_name.lower() or onchain_name.lower() in known_name.lower():
+                                                nft_data.update(info)
+                                                matched = True
+                                                break
+                                        if not matched:
+                                            nft_data["name"] = onchain_name
+                                            matched = True
+                                    break
+                        except Exception as e:
+                            print(f"Error reading mint metadata for {mint}: {e}")
+                        
+                    if not matched:
+                        # Skip unidentified NFTs — only show recognized ones
+                        continue
                     
                     nfts.append(nft_data)
         except Exception as e:
@@ -1671,6 +2096,16 @@ def _get_ai_pubkey_str():
     if _AI_WALLET_PUBKEY is None:
         _AI_WALLET_PUBKEY = str(_get_wallet_pubkey())
     return _AI_WALLET_PUBKEY
+
+
+def _derive_symbiotic_pda(human_pubkey_str):
+    """Derive the Symbiotic PDA address for a human wallet."""
+    from solders.pubkey import Pubkey as _Pubkey
+    program_id = _Pubkey.from_string(_SYMBIOTIC_PROGRAM_ID)
+    human = _Pubkey.from_string(human_pubkey_str)
+    seeds = [b"symbiotic", bytes(human), bytes([0])]
+    pda, _bump = _Pubkey.find_program_address(seeds, program_id)
+    return str(pda)
 
 
 @app.route("/api/symbiotic/build-init-tx", methods=["POST"])
