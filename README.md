@@ -20,29 +20,10 @@
 
 **Prerequisites:** Node.js 18+ · Python 3 · Git
 
-<table><tr><td><strong>macOS / Linux</strong></td><td><strong>Windows</strong></td></tr>
-<tr><td>
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ManoloRemiddi/resonantos-alpha/main/install.sh | bash
-```
-
-</td><td>
-
-```powershell
 git clone https://github.com/ManoloRemiddi/resonantos-alpha.git ~/resonantos-alpha
 node ~/resonantos-alpha/install.js
 ```
-
-</td></tr>
-<tr><td colspan="2"><strong>All platforms (Node.js):</strong></td></tr>
-<tr><td colspan="2">
-
-```bash
-git clone https://github.com/ManoloRemiddi/resonantos-alpha.git ~/resonantos-alpha && node ~/resonantos-alpha/install.js
-```
-
-</td></tr></table>
 
 ---
 
