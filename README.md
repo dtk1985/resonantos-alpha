@@ -9,10 +9,40 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-alpha_0.1-7c3aed?style=for-the-badge" alt="Version">
-  <img src="https://img.shields.io/badge/platform-macOS_%7C_Linux-333?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS_%7C_Linux_%7C_Windows-333?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/license-RC--SL_v1.0-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/OpenClaw-compatible-blue?style=for-the-badge" alt="OpenClaw">
 </p>
+
+---
+
+## 🚀 Install
+
+**Prerequisites:** Node.js 18+ · Python 3 · Git
+
+<table><tr><td><strong>macOS / Linux</strong></td><td><strong>Windows</strong></td></tr>
+<tr><td>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ManoloRemiddi/resonantos-alpha/main/install.sh | bash
+```
+
+</td><td>
+
+```powershell
+git clone https://github.com/ManoloRemiddi/resonantos-alpha.git ~/resonantos-alpha
+node ~/resonantos-alpha/install.js
+```
+
+</td></tr>
+<tr><td colspan="2"><strong>All platforms (Node.js):</strong></td></tr>
+<tr><td colspan="2">
+
+```bash
+git clone https://github.com/ManoloRemiddi/resonantos-alpha.git ~/resonantos-alpha && node ~/resonantos-alpha/install.js
+```
+
+</td></tr></table>
 
 ---
 
@@ -53,18 +83,10 @@ A philosophy of resonance and attunement. Your AI collaborator isn't a tool — 
 
 ---
 
-## 🚀 Quick Install
-
-**Prerequisites:** macOS or Linux · Node.js 18+ · Python 3 · Git
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ManoloRemiddi/resonantos-alpha/main/install.sh | bash
-```
-
 <details>
 <summary><strong>What the installer does</strong></summary>
 
-1. Checks dependencies (Node, Python, Git)
+1. Checks dependencies (Node 18+, Python 3, Git, OpenClaw)
 2. Clones this repo to `~/resonantos-alpha/`
 3. Installs R-Memory & R-Awareness extensions into OpenClaw
 4. Sets up the SSoT template structure (L0–L4)
@@ -76,15 +98,9 @@ curl -fsSL https://raw.githubusercontent.com/ManoloRemiddi/resonantos-alpha/main
 **After install:**
 
 ```bash
-# 1. Start OpenClaw
-openclaw gateway start
-
-# 2. Launch the Dashboard
-cd ~/resonantos-alpha/dashboard
-python3 server_v2.py
-
-# 3. Open Mission Control
-open http://localhost:19100
+openclaw gateway start                                    # 1. Start OpenClaw
+cd ~/resonantos-alpha/dashboard && python3 server_v2.py   # 2. Launch Dashboard
+open http://localhost:19100                                # 3. Open Mission Control
 ```
 
 ---
