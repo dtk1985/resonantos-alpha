@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-alpha_0.1-7c3aed?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/platform-macOS_%7C_Linux-333?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/license-RC--SL_v1.0-green?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/OpenClaw-compatible-blue?style=for-the-badge" alt="OpenClaw">
 </p>
 
@@ -206,6 +206,14 @@ Together, building proof that human-AI symbiosis works.
 - [Augmentatism Manifesto](https://augmentatism.com) — The social contract
 - [Cosmodestiny](https://cosmodestiny.com) — The philosophy
 - [OpenClaw](https://github.com/openclaw/openclaw) — The kernel
+
+---
+
+## 📜 License
+
+**[Resonant Core — Symbiotic License v1.0 (RC-SL v1.0)](LICENSE)**
+
+Not MIT. Not GPL. A symbiotic license: free to share and adapt, with a 1% tithe for commercial use that funds both the community DAO and core development. [Read the full license →](LICENSE)
 
 ---
 
