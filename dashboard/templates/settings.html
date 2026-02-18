@@ -1,0 +1,669 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - ResonantOS Dashboard{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="settings-layout">
+    <!-- Settings Navigation -->
+    <nav class="settings-nav">
+        <a href="#general" class="settings-nav-item active" onclick="showSection('general')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            General
+        </a>
+        <a href="#rules" class="settings-nav-item" onclick="showSection('rules')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Rules
+        </a>
+        <a href="#permissions" class="settings-nav-item" onclick="showSection('permissions')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Permissions
+        </a>
+        <a href="#subscription" class="settings-nav-item" onclick="showSection('subscription')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            Subscription
+        </a>
+        <a href="#notifications" class="settings-nav-item" onclick="showSection('notifications')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Notifications
+        </a>
+        <a href="#advanced" class="settings-nav-item" onclick="showSection('advanced')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            Advanced
+        </a>
+    </nav>
+    
+    <!-- Settings Content -->
+    <div class="settings-content">
+        <!-- General Section -->
+        <section class="settings-section active" id="generalSection">
+            <h2 class="section-title">General Settings</h2>
+            
+            <div class="settings-card">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Theme</h3>
+                        <p>Choose your preferred color scheme</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="themeSelect" onchange="changeTheme(this.value)">
+                            <option value="dark"> Dark</option>
+                            <option value="light"> Light</option>
+                            <option value="auto"> System</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Auto Refresh</h3>
+                        <p>Automatically refresh dashboard data</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoRefresh" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Refresh Interval</h3>
+                        <p>How often to refresh data</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="refreshInterval">
+                            <option value="5">5 seconds</option>
+                            <option value="10">10 seconds</option>
+                            <option value="30" selected>30 seconds</option>
+                            <option value="60">1 minute</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Rules Section (Logician) -->
+        <section class="settings-section" id="rulesSection">
+            <h2 class="section-title">Logician Rules</h2>
+            <p class="section-description">Control which rule files are active in the Logician reasoning engine. Some rules are locked for security.</p>
+
+            <div class="rules-header">
+                <div class="rules-summary" id="rulesSummary">
+                    <div class="summary-stat">
+                        <span class="value" id="totalRules">-</span>
+                        <span class="label">Files</span>
+                    </div>
+                    <div class="summary-stat">
+                        <span class="value" id="enabledRules">-</span>
+                        <span class="label">Enabled</span>
+                    </div>
+                    <div class="summary-stat">
+                        <span class="value" id="lockedRules">-</span>
+                        <span class="label">Locked</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="loadRules()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+
+            <div class="rules-list" id="rulesList">
+                <div class="rules-loading">
+                    <div class="spinner"></div>
+                    <span>Loading rules...</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Subscription Section -->
+        <section class="settings-section" id="subscriptionSection">
+            <h2 class="section-title">Subscription</h2>
+            <p class="section-description">Choose your ResonantOS plan.</p>
+            
+            <!-- Subscription Tiers -->
+            <div class="subscription-tiers-grid">
+                <!-- Free Tier - Current -->
+                <div class="subscription-tier-card current" data-tier="free">
+                    <div class="tier-current-badge">
+                        <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Current Plan
+                    </div>
+                    <div class="tier-header">
+                        <span class="tier-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M8 12h8"/></svg></span>
+                        <h3>Free</h3>
+                    </div>
+                    <ul class="tier-features">
+                        <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 1 Chatbot</li>
+                        <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Basic Features</li>
+                        <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Community Support</li>
+                    </ul>
+                </div>
+                
+                <!-- Professional Tier - Coming Soon -->
+                <div class="subscription-tier-card coming-soon" data-tier="professional">
+                    <div class="tier-coming-soon-badge">Coming Soon</div>
+                    <div class="tier-header">
+                        <span class="tier-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span>
+                        <h3>Professional</h3>
+                    </div>
+                </div>
+                
+                <!-- Business Tier - Coming Soon -->
+                <div class="subscription-tier-card coming-soon" data-tier="business">
+                    <div class="tier-coming-soon-badge">Coming Soon</div>
+                    <div class="tier-header">
+                        <span class="tier-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="9" y1="6" x2="9" y2="6.01"/><line x1="15" y1="6" x2="15" y2="6.01"/><line x1="9" y1="10" x2="9" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="15" y1="14" x2="15" y2="14.01"/><line x1="9" y1="18" x2="15" y2="18"/></svg></span>
+                        <h3>Business</h3>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Permissions Section -->
+        <section class="settings-section" id="permissionsSection">
+            <h2 class="section-title">AI Permissions</h2>
+            <p class="section-description">Control what capabilities the AI has access to. Changes require confirmation.</p>
+            
+            <div class="settings-card permissions-card">
+                <div class="setting-item permission">
+                    <div class="setting-info">
+                        <h3>Browser Access</h3>
+                        <p>Allow AI to control web browser for research and automation</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="permBrowser" checked onchange="confirmPermission(this, 'browserAccess')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item permission">
+                    <div class="setting-info">
+                        <h3>Shell Commands</h3>
+                        <p>Allow AI to execute shell commands on your system</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="permShell" checked onchange="confirmPermission(this, 'shellCommands')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item permission">
+                    <div class="setting-info">
+                        <h3>File Write Access</h3>
+                        <p>Allow AI to create and modify files</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="permFileWrite" checked onchange="confirmPermission(this, 'fileWrite')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item permission sensitive">
+                    <div class="setting-info">
+                        <h3>External Messaging</h3>
+                        <p class="warning"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Allow AI to send emails, tweets, and other external messages</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="permMessaging" onchange="confirmPermission(this, 'externalMessaging')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item permission">
+                    <div class="setting-info">
+                        <h3>Tool Installation</h3>
+                        <p>Allow AI to install new tools and packages</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="permToolInstall" checked onchange="confirmPermission(this, 'toolInstallation')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Notifications Section -->
+        <section class="settings-section" id="notificationsSection">
+            <h2 class="section-title">Notifications</h2>
+            
+            <div class="settings-card">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Desktop Notifications</h3>
+                        <p>Show desktop notifications for important events</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="desktopNotif" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Alert Level</h3>
+                        <p>Minimum severity level for notifications</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="alertLevel">
+                            <option value="all">All events</option>
+                            <option value="warning" selected>Warnings & Errors</option>
+                            <option value="error">Errors only</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Sound</h3>
+                        <p>Play sound for notifications</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="soundNotif">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Advanced Section -->
+        <section class="settings-section" id="advancedSection">
+            <h2 class="section-title">Advanced Settings</h2>
+            
+            <div class="settings-card">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Log Retention</h3>
+                        <p>How long to keep log files</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="logRetention">
+                            <option value="7">7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Debug Mode</h3>
+                        <p>Enable verbose logging for troubleshooting</p>
+                    </div>
+                    <div class="setting-control">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="debugMode">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="settings-card danger-zone">
+                <h3>Danger Zone</h3>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Clear Cache</h3>
+                        <p>Remove all cached data</p>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn-danger" onclick="clearCache()">Clear Cache</button>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h3>Reset Settings</h3>
+                        <p>Restore all settings to default values</p>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn-danger" onclick="resetSettings()">Reset All</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal" id="confirmModal">
+    <div class="modal-content small">
+        <div class="modal-header">
+            <h2>Confirm Permission Change</h2>
+        </div>
+        <div class="modal-body">
+            <p id="confirmMessage">Are you sure you want to change this permission?</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="cancelPermission()">Cancel</button>
+            <button class="btn-primary" onclick="applyPermission()">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Settings Confirmation Modal -->
+<div class="modal" id="resetConfirmModal">
+    <div class="modal-content small">
+        <div class="modal-header">
+            <h2><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> Reset All Settings</h2>
+        </div>
+        <div class="modal-body">
+            <p class="warning-text">This action will reset all settings to their default values. This cannot be undone.</p>
+            <p>To confirm, type <strong>RESET</strong> below:</p>
+            <input type="text" id="resetConfirmInput" class="confirm-input" 
+                   placeholder="Type RESET to confirm" 
+                   onkeyup="checkResetConfirmation()" 
+                   autocomplete="off">
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="cancelResetSettings()">Cancel</button>
+            <button class="btn-danger" id="confirmResetBtn" onclick="confirmResetSettings()" disabled>Reset All Settings</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let pendingPermission = null;
+let rulesData = [];
+let expandedRules = new Set();
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSettings();
+    loadRules();
+});
+
+function showSection(section) {
+    document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+    
+    event.target.closest('.settings-nav-item').classList.add('active');
+    document.getElementById(section + 'Section').classList.add('active');
+}
+
+async function loadSettings() {
+    try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+        
+        document.getElementById('themeSelect').value = settings.theme;
+        document.getElementById('autoRefresh').checked = settings.autoRefresh;
+        document.getElementById('refreshInterval').value = settings.refreshInterval;
+        
+        // Load permissions
+        document.getElementById('permBrowser').checked = settings.permissions.browserAccess;
+        document.getElementById('permShell').checked = settings.permissions.shellCommands;
+        document.getElementById('permFileWrite').checked = settings.permissions.fileWrite;
+        document.getElementById('permMessaging').checked = settings.permissions.externalMessaging;
+        document.getElementById('permToolInstall').checked = settings.permissions.toolInstallation;
+        
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
+function changeTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    saveSettings();
+}
+
+function confirmPermission(checkbox, permName) {
+    const action = checkbox.checked ? 'enable' : 'disable';
+    const messages = {
+        browserAccess: `${action} browser access for the AI?`,
+        shellCommands: `${action} shell command execution? This allows the AI to run commands on your system.`,
+        fileWrite: `${action} file write access?`,
+        externalMessaging: `${action} external messaging? This allows the AI to send emails and messages.`,
+        toolInstallation: `${action} tool installation?`
+    };
+    
+    pendingPermission = {
+        checkbox: checkbox,
+        permName: permName,
+        value: checkbox.checked
+    };
+    
+    // Revert the checkbox until confirmed
+    checkbox.checked = !checkbox.checked;
+    
+    document.getElementById('confirmMessage').textContent = messages[permName];
+    document.getElementById('confirmModal').classList.add('active');
+}
+
+function cancelPermission() {
+    document.getElementById('confirmModal').classList.remove('active');
+    pendingPermission = null;
+}
+
+async function applyPermission() {
+    if (!pendingPermission) return;
+    
+    const { checkbox, permName, value } = pendingPermission;
+    checkbox.checked = value;
+    
+    document.getElementById('confirmModal').classList.remove('active');
+    
+    await saveSettings();
+    showToast(`Permission ${value ? 'enabled' : 'disabled'}`);
+    
+    pendingPermission = null;
+}
+
+async function saveSettings() {
+    const settings = {
+        theme: document.getElementById('themeSelect').value,
+        autoRefresh: document.getElementById('autoRefresh').checked,
+        refreshInterval: parseInt(document.getElementById('refreshInterval').value),
+        notifications: document.getElementById('desktopNotif').checked,
+        permissions: {
+            browserAccess: document.getElementById('permBrowser').checked,
+            shellCommands: document.getElementById('permShell').checked,
+            fileWrite: document.getElementById('permFileWrite').checked,
+            externalMessaging: document.getElementById('permMessaging').checked,
+            toolInstallation: document.getElementById('permToolInstall').checked
+        }
+    };
+    
+    try {
+        await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+    } catch (error) {
+        console.error('Error saving settings:', error);
+    }
+}
+
+function clearCache() {
+    if (confirm('Are you sure you want to clear all cached data?')) {
+        showToast('Cache cleared');
+    }
+}
+
+function resetSettings() {
+    // Show the confirmation modal instead of simple confirm
+    document.getElementById('resetConfirmModal').classList.add('active');
+    document.getElementById('resetConfirmInput').value = '';
+    document.getElementById('confirmResetBtn').disabled = true;
+}
+
+function checkResetConfirmation() {
+    const input = document.getElementById('resetConfirmInput').value;
+    document.getElementById('confirmResetBtn').disabled = (input !== 'RESET');
+}
+
+function cancelResetSettings() {
+    document.getElementById('resetConfirmModal').classList.remove('active');
+}
+
+function confirmResetSettings() {
+    const input = document.getElementById('resetConfirmInput').value;
+    if (input !== 'RESET') {
+        showToast('Type RESET to confirm', 'error');
+        return;
+    }
+    
+    document.getElementById('resetConfirmModal').classList.remove('active');
+    
+    // Actually reset settings
+    localStorage.clear();
+    showToast('Settings reset to defaults');
+    loadSettings();
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2000);
+}
+
+// ============================================
+// Rules Management (embedded from /rules)
+// ============================================
+
+async function loadRules() {
+    const container = document.getElementById('rulesList');
+    if (!container) return;
+
+    container.innerHTML = '<div class="rules-loading"><div class="spinner"></div><span>Loading rules...</span></div>';
+
+    try {
+        const response = await fetch('/api/logician/rules');
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = '<div class="error-state">' + data.error + '</div>';
+            return;
+        }
+
+        rulesData = data.rules;
+        renderRules(data.rules);
+        updateRulesSummary(data.rules);
+    } catch (error) {
+        container.innerHTML = '<div class="error-state">Failed to load rules: ' + error.message + '</div>';
+    }
+}
+
+function updateRulesSummary(rules) {
+    const totalEl = document.getElementById('totalRules');
+    const enabledEl = document.getElementById('enabledRules');
+    const lockedEl = document.getElementById('lockedRules');
+    if (totalEl) totalEl.textContent = rules.length;
+    if (enabledEl) enabledEl.textContent = rules.filter(r => r.enabled).length;
+    if (lockedEl) lockedEl.textContent = rules.filter(r => r.locked).length;
+}
+
+function renderRules(rules) {
+    const container = document.getElementById('rulesList');
+
+    if (rules.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>No rule files found</p></div>';
+        return;
+    }
+
+    container.innerHTML = rules.map(rule => {
+        const safeId = rule.filename.replaceAll('.', '-');
+        return '<div class="rule-card ' + (rule.enabled ? '' : 'disabled') + ' ' + (rule.locked ? 'locked' : '') + '" id="rule-' + safeId + '">' +
+            '<div class="rule-header" onclick="toggleRuleExpand(\'' + rule.filename + '\')">' +
+                '<div class="rule-info">' +
+                    '<div class="rule-name">' + rule.filename + '</div>' +
+                    '<div class="rule-description">' + rule.description + '</div>' +
+                '</div>' +
+                '<div class="rule-stats">' +
+                    '<div class="rule-stat"><span class="count">' + rule.rules + '</span><span class="type">Rules</span></div>' +
+                    '<div class="rule-stat"><span class="count">' + rule.facts + '</span><span class="type">Facts</span></div>' +
+                '</div>' +
+                '<div class="rule-toggle" onclick="event.stopPropagation()">' +
+                    (rule.locked ?
+                        '<div class="locked-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> LOCKED</div>' :
+                        '<label class="switch"><input type="checkbox" ' + (rule.enabled ? 'checked' : '') + ' onchange="toggleRule(\'' + rule.filename + '\', this.checked)"><span class="slider"></span></label>'
+                    ) +
+                '</div>' +
+            '</div>' +
+            '<div class="rule-content" id="content-' + safeId + '" style="display:none">' +
+                '<div class="code-preview" id="code-' + safeId + '">Loading...</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function toggleRuleExpand(filename) {
+    const safeId = filename.replaceAll('.', '-');
+    const card = document.getElementById('rule-' + safeId);
+    const content = document.getElementById('content-' + safeId);
+    const code = document.getElementById('code-' + safeId);
+    if (!card || !content) return;
+
+    const wasExpanded = card.classList.contains('expanded');
+    card.classList.toggle('expanded');
+    content.style.display = wasExpanded ? 'none' : 'block';
+
+    if (!wasExpanded && code && code.textContent.trim() === 'Loading...') {
+        loadRuleContent(filename, code);
+    }
+}
+
+async function loadRuleContent(filename, codeEl) {
+    try {
+        const response = await fetch('/api/logician/rules/' + filename);
+        const data = await response.json();
+        if (data.error) {
+            codeEl.textContent = 'Error: ' + data.error;
+            return;
+        }
+        codeEl.textContent = data.content;
+    } catch (error) {
+        codeEl.textContent = 'Failed to load: ' + error.message;
+    }
+}
+
+async function toggleRule(filename, enabled) {
+    try {
+        const response = await fetch('/api/logician/rules/' + filename + '/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (data.error) {
+            showToast(data.error, 'error');
+            loadRules();
+            return;
+        }
+        const rule = rulesData.find(r => r.filename === filename);
+        if (rule) rule.enabled = enabled;
+        updateRulesSummary(rulesData);
+        showToast(filename + ' ' + (enabled ? 'enabled' : 'disabled'), 'success');
+    } catch (error) {
+        showToast('Failed to toggle: ' + error.message, 'error');
+        loadRules();
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Agents - ResonantOS Dashboard{% endblock %}
+{% block page_title %}Agents{% endblock %}
+
+{% block content %}
+<!-- Orchestrator (Tier 0) -->
+<div id="orchestratorSection"></div>
+
+<!-- Connection Lines -->
+<div id="connectorLine" style="display:none; text-align:center; padding:4px 0;">
+    <svg width="100%" height="40" style="max-width:800px;">
+        <line x1="50%" y1="0" x2="50%" y2="20" stroke="var(--border-light)" stroke-width="2"/>
+        <line x1="10%" y1="20" x2="90%" y2="20" stroke="var(--border-light)" stroke-width="2"/>
+    </svg>
+</div>
+
+<!-- Category Sections -->
+<div id="directAgents"></div>
+<div id="backgroundAgents" style="margin-top:24px;"></div>
+<div id="supportAgents" style="margin-top:24px;"></div>
+
+<!-- Agent Detail Modal -->
+<div class="modal" id="agentModal">
+    <div class="modal-content modal-wide">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modalTitle">Agent Details</h2>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Orchestrator card */
+.orchestrator-card {
+    background: var(--bg-secondary);
+    border: 2px solid var(--success);
+    border-radius: var(--radius);
+    padding: 24px 32px;
+    max-width: 520px;
+    margin: 0 auto 8px auto;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+.orchestrator-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(74,222,128,0.15); }
+.orchestrator-card::after {
+    content: 'ORCHESTRATOR';
+    position: absolute; top: 8px; right: 12px;
+    font-size: 9px; letter-spacing: 1.5px; color: var(--success); opacity: 0.7;
+}
+.orchestrator-header {
+    display: flex; align-items: center; gap: 16px;
+}
+.orchestrator-icon { font-size: 40px; }
+.orchestrator-icon img { width: 128px; height: 128px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 12px rgba(16,185,129,0.4); }
+.orchestrator-info { flex: 1; }
+.orchestrator-name { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.orchestrator-role { font-size: 12px; color: var(--success); margin-top: 2px; }
+.orchestrator-meta {
+    display: flex; gap: 24px; margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+.orchestrator-meta-item { display: flex; flex-direction: column; gap: 2px; }
+.orchestrator-meta-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.orchestrator-meta-value { font-size: 13px; color: var(--text-primary); }
+
+/* Category headers */
+.category-header {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-muted); margin-bottom: 12px; padding-left: 4px;
+}
+
+/* Agent grid */
+.agents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+/* Agent cards (tier 1) */
+.agent-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.agent-card:hover { border-color: var(--border-light); transform: translateY(-1px); }
+.agent-card.inactive { opacity: 0.55; }
+
+.agent-card-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.agent-icon { font-size: 24px; }
+.agent-name { font-size: 15px; font-weight: 600; }
+.agent-role { font-size: 11px; color: var(--text-muted); }
+
+.agent-status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; margin-left: auto; flex-shrink: 0;
+}
+.agent-status-dot.active { background: var(--success); }
+.agent-status-dot.inactive { background: var(--text-muted); }
+
+.agent-meta-row {
+    display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary);
+    margin-top: 8px;
+}
+.agent-meta-row span { display: flex; align-items: center; gap: 4px; }
+
+/* Workspace file dots */
+.agent-files { display: flex; gap: 4px; margin-top: 10px; }
+.file-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+}
+.file-dot.exists { background: var(--success); border-color: var(--success); }
+
+/* Modal */
+.modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+.modal.active { display: flex; }
+.modal-content { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; max-width: 800px; width: 95%; max-height: 85vh; overflow-y: auto; }
+.modal-wide { max-width: 900px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.modal-title { font-size: 18px; font-weight: 600; }
+.modal-close { background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; padding: 0 4px; }
+.modal-close:hover { color: var(--text-primary); }
+.modal-body { padding: 24px; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.detail-item { display: flex; flex-direction: column; gap: 4px; }
+.detail-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+.detail-value { font-size: 14px; color: var(--text-primary); }
+
+.file-viewer { margin-top: 16px; }
+.file-tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+.file-tab {
+    padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: 6px 6px 0 0; color: var(--text-secondary); cursor: pointer;
+    font-size: 12px; border-bottom: none;
+}
+.file-tab.active { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-light); }
+.file-tab.missing { opacity: 0.4; cursor: default; }
+.file-content {
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: 0 8px 8px 8px;
+    padding: 16px; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 12px;
+    line-height: 1.6; color: var(--text-secondary); max-height: 400px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+}
+
+.sessions-list { margin-top: 16px; }
+.session-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.session-row:hover { background: var(--bg-hover); }
+.session-key { font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 11px; color: var(--text-secondary); }
+.session-age { color: var(--text-muted); font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let agentsData = [];
+
+document.addEventListener('DOMContentLoaded', loadAgents);
+
+async function loadAgents() {
+    try {
+        const res = await fetch('/api/agents');
+        agentsData = await res.json();
+        renderHierarchy(agentsData);
+    } catch(e) {
+        document.getElementById('orchestratorSection').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Failed to load agents</div>';
+    }
+}
+
+const AGENT_ICONS = {
+    'main': '/static/img/augmentor-icon.jpg',
+    'dao': '/static/img/dao-icon.webp',
+    'youtube': '/static/img/youtube-icon.webp',
+    'website': '/static/img/website-icon.webp',
+    'watchdog': '/static/img/watchdog-icon.webp',
+    'doer': '/static/img/doer-icon.webp',
+    'decoder': '/static/img/decoder-icon.webp',
+};
+
+function agentIconHtml(ag, size) {
+    size = size || 28;
+    const src = AGENT_ICONS[ag.agentId];
+    if (src) return `<img src="${src}" alt="${ag.displayName}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;">`;
+    return ag.emoji;
+}
+
+function renderHierarchy(agents) {
+    const orchestrator = agents.find(a => a.tier === 0);
+    const direct = agents.filter(a => a.tier === 1 && a.category === 'direct');
+    const background = agents.filter(a => a.tier === 1 && a.category === 'background');
+    const support = agents.filter(a => a.tier === 1 && a.category === 'support');
+    const other = agents.filter(a => a.tier === 1 && !['direct','background','support'].includes(a.category));
+
+    // Orchestrator
+    if (orchestrator) {
+        const ag = orchestrator;
+        const model = (ag.mainModel || '-').split('/').pop();
+        const hb = ag.heartbeat || {};
+        const sess = ag.sessions || {};
+        document.getElementById('orchestratorSection').innerHTML = `
+            <div class="orchestrator-card" onclick="showAgentDetail('${ag.agentId}')">
+                <div class="orchestrator-header">
+                    <span class="orchestrator-icon">${agentIconHtml(ag, 128)}</span>
+                    <div class="orchestrator-info">
+                        <div class="orchestrator-name">${ag.displayName}</div>
+                        <div class="orchestrator-role">${ag.role}</div>
+                    </div>
+                </div>
+                <div class="orchestrator-meta">
+                    <div class="orchestrator-meta-item">
+                        <span class="orchestrator-meta-label">Model</span>
+                        <span class="orchestrator-meta-value">${model}</span>
+                    </div>
+                    <div class="orchestrator-meta-item">
+                        <span class="orchestrator-meta-label">Heartbeat</span>
+                        <span class="orchestrator-meta-value">${hb.enabled ? hb.every : 'off'}</span>
+                    </div>
+                    <div class="orchestrator-meta-item">
+                        <span class="orchestrator-meta-label">Sessions</span>
+                        <span class="orchestrator-meta-value">${sess.count || 0}</span>
+                    </div>
+                    <div class="orchestrator-meta-item">
+                        <span class="orchestrator-meta-label">Status</span>
+                        <span class="orchestrator-meta-value" style="color:var(--success)">active</span>
+                    </div>
+                </div>
+            </div>`;
+        if (direct.length || background.length || support.length) {
+            document.getElementById('connectorLine').style.display = 'block';
+        }
+    }
+
+    // Render category sections
+    function renderCategory(containerId, label, agents) {
+        if (!agents.length) return;
+        const el = document.getElementById(containerId);
+        el.innerHTML = `
+            <div class="category-header">${label}</div>
+            <div class="agents-grid">
+                ${agents.map(ag => renderAgentCard(ag)).join('')}
+            </div>`;
+    }
+
+    renderCategory('directAgents', '🎯 Direct Communication Agents', direct);
+    renderCategory('backgroundAgents', '⚙️ Background Agents', background);
+    renderCategory('supportAgents', '🛡️ Support & Monitoring', support);
+    if (other.length) {
+        const el = document.createElement('div');
+        el.style.marginTop = '24px';
+        el.id = 'otherAgents';
+        document.getElementById('supportAgents').after(el);
+        renderCategory('otherAgents', '📦 Other', other);
+    }
+}
+
+function renderAgentCard(ag) {
+    const model = (ag.mainModel || '-').split('/').pop();
+    const sess = ag.sessions || {};
+    const files = ag.workspaceFiles || {};
+    const fileNames = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md'];
+    const recent = (sess.recent || [])[0];
+    const recentAge = recent ? formatAge(recent.age) : 'none';
+
+    return `
+    <div class="agent-card ${ag.status === 'inactive' ? 'inactive' : ''}" onclick="showAgentDetail('${ag.agentId}')">
+        <div class="agent-card-header">
+            <span class="agent-icon">${agentIconHtml(ag, 32)}</span>
+            <div>
+                <div class="agent-name">${ag.displayName}</div>
+                <div class="agent-role">${ag.role}</div>
+            </div>
+            <span class="agent-status-dot ${ag.status}"></span>
+        </div>
+        <div class="agent-meta-row">
+            <span>🧠 ${model}</span>
+            <span>📊 ${sess.count || 0} sessions</span>
+            <span>🕐 ${recentAge}</span>
+        </div>
+        <div class="agent-files" title="${fileNames.map(f => f + (files[f] ? ' ✓' : ' ✗')).join(', ')}">
+            ${fileNames.map(f => `<span class="file-dot ${files[f] ? 'exists' : ''}" title="${f}"></span>`).join('')}
+        </div>
+    </div>`;
+}
+
+async function showAgentDetail(agentId) {
+    const ag = agentsData.find(a => a.agentId === agentId);
+    if (!ag) return;
+
+    const modal = document.getElementById('agentModal');
+    const body = document.getElementById('modalBody');
+    document.getElementById('modalTitle').textContent = `${ag.emoji} ${ag.displayName}`;
+
+    const hb = ag.heartbeat || {};
+    const sess = ag.sessions || {};
+    const files = ag.workspaceFiles || {};
+    const fileNames = Object.keys(files);
+
+    body.innerHTML = `
+        <div class="detail-grid">
+            <div class="detail-item">
+                <span class="detail-label">Agent ID</span>
+                <span class="detail-value" style="font-family:monospace;">${agentId}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Role</span>
+                <span class="detail-value">${ag.role || '-'}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Category</span>
+                <span class="detail-value">${ag.category || '-'}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Tier</span>
+                <span class="detail-value">${ag.tier === 0 ? 'Orchestrator' : 'Agent'}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Model</span>
+                <span class="detail-value">${(ag.mainModel || '-').split('/').pop()}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Status</span>
+                <span class="detail-value" style="color:${ag.status==='active'?'var(--success)':'var(--text-muted)'}">${ag.status}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Heartbeat</span>
+                <span class="detail-value">${hb.enabled ? hb.every + ' (' + (hb.model||'').split('/').pop() + ')' : 'Disabled'}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Sessions</span>
+                <span class="detail-value">${sess.count || 0}</span>
+            </div>
+        </div>
+
+        ${fileNames.length ? `
+        <h3 style="margin-bottom: 8px; font-size: 14px;">Workspace Files</h3>
+        <div class="file-viewer">
+            <div class="file-tabs">
+                ${fileNames.map((f, i) => `<div class="file-tab ${i===0?'active':''}" onclick="switchFileTab(this, '${f}')">${f}</div>`).join('')}
+            </div>
+            <div class="file-content" id="fileContent">${escapeHtml(files[fileNames[0]] || 'empty')}</div>
+        </div>` : '<p style="color:var(--text-muted)">No workspace files found</p>'}
+
+        ${(sess.recent || []).length ? `
+        <h3 style="margin: 24px 0 8px; font-size: 14px;">Recent Sessions</h3>
+        <div class="sessions-list">
+            ${(sess.recent || []).map(s => `
+                <div class="session-row">
+                    <span class="session-key">${s.key}</span>
+                    <span class="session-age">${formatAge(s.age)}</span>
+                </div>
+            `).join('')}
+        </div>` : ''}
+    `;
+
+    window._agentFiles = files;
+    modal.classList.add('active');
+}
+
+function switchFileTab(el, filename) {
+    document.querySelectorAll('.file-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('fileContent').textContent = window._agentFiles[filename] || 'empty';
+}
+
+function closeModal() {
+    document.getElementById('agentModal').classList.remove('active');
+}
+document.getElementById('agentModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+function escapeHtml(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+}
+
+function formatAge(ms) {
+    if (!ms && ms !== 0) return '-';
+    if (ms < 60000) return Math.round(ms/1000) + 's ago';
+    if (ms < 3600000) return Math.round(ms/60000) + 'm ago';
+    if (ms < 86400000) return Math.round(ms/3600000) + 'h ago';
+    return Math.round(ms/86400000) + 'd ago';
+}
+</script>
+{% endblock %}

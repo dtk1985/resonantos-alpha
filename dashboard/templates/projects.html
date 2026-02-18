@@ -1,0 +1,609 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - ResonantOS Dashboard{% endblock %}
+{% block page_title %}Projects{% endblock %}
+
+{% block content %}
+<style>
+/* ── Projects Overview ── */
+.projects-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem; }
+.projects-header h2 { margin:0; font-size:1.1rem; color:var(--text-primary,#e0e0e0); }
+.projects-toolbar { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; }
+.projects-toolbar input[type="text"] { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); color:var(--text-primary,#e0e0e0); padding:0.5rem 0.75rem; border-radius:6px; font-size:0.85rem; width:220px; }
+.projects-toolbar select { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); color:var(--text-primary,#e0e0e0); padding:0.5rem; border-radius:6px; font-size:0.85rem; }
+.btn-primary { background:#6C5CE7; color:#fff; border:none; padding:0.5rem 1rem; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600; }
+.btn-primary:hover { background:#5b4bd5; }
+.btn-sm { padding:0.3rem 0.6rem; font-size:0.8rem; }
+.btn-ghost { background:transparent; border:1px solid var(--border,#333); color:var(--text-secondary,#999); padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-size:0.8rem; }
+.btn-ghost:hover { border-color:var(--text-primary,#e0e0e0); color:var(--text-primary,#e0e0e0); }
+.btn-danger { background:#e74c3c; color:#fff; border:none; padding:0.3rem 0.6rem; border-radius:4px; cursor:pointer; font-size:0.8rem; }
+
+/* ── Stats Bar ── */
+.stats-bar { display:flex; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+.stat-card { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:8px; padding:1rem 1.25rem; flex:1; min-width:120px; cursor:pointer; transition:border-color 0.2s; }
+.stat-card:hover,.stat-card.active { border-color:#6C5CE7; }
+.stat-card .stat-value { font-size:1.5rem; font-weight:700; display:block; }
+.stat-card .stat-label { font-size:0.75rem; color:var(--text-secondary,#999); text-transform:uppercase; letter-spacing:0.5px; }
+.stat-card .stat-value.green { color:#00b894; }
+.stat-card .stat-value.blue { color:#0984e3; }
+.stat-card .stat-value.orange { color:#e17055; }
+.stat-card .stat-value.gray { color:#636e72; }
+
+/* ── Project Grid ── */
+.projects-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:1rem; }
+.project-card { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:10px; padding:1.25rem; cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden; }
+.project-card:hover { border-color:#6C5CE7; transform:translateY(-2px); box-shadow:0 4px 12px rgba(108,92,231,0.15); }
+.project-card .accent-bar { position:absolute; top:0; left:0; right:0; height:3px; }
+.project-card-header { display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; }
+.project-icon { font-size:1.5rem; }
+.project-card-header h3 { margin:0; font-size:1rem; flex:1; }
+.project-card-header .priority-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.priority-critical { background:#e74c3c; }
+.priority-high { background:#e17055; }
+.priority-medium { background:#fdcb6e; }
+.priority-low { background:#636e72; }
+.project-desc { color:var(--text-secondary,#999); font-size:0.85rem; margin-bottom:1rem; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.project-tags { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem; }
+.tag { background:rgba(108,92,231,0.15); color:#a29bfe; padding:0.15rem 0.5rem; border-radius:12px; font-size:0.7rem; }
+
+/* ── Progress bar ── */
+.progress-bar-wrap { background:var(--border,#333); border-radius:4px; height:6px; margin-bottom:0.75rem; overflow:hidden; }
+.progress-bar-fill { height:100%; border-radius:4px; transition:width 0.3s; background:linear-gradient(90deg,#6C5CE7,#a29bfe); }
+
+/* ── Task counts row ── */
+.task-counts { display:flex; gap:1rem; font-size:0.75rem; color:var(--text-secondary,#999); }
+.task-counts span { display:flex; align-items:center; gap:0.3rem; }
+.task-dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+.task-dot.todo { background:#636e72; }
+.task-dot.in_progress { background:#0984e3; }
+.task-dot.blocked { background:#e74c3c; }
+.task-dot.done { background:#00b894; }
+.project-deadline { font-size:0.75rem; color:var(--text-secondary,#999); margin-top:0.5rem; }
+.project-deadline.overdue { color:#e74c3c; }
+
+/* ── Project Detail View ── */
+.project-detail-view { display:none; }
+.project-detail-view.active { display:block; }
+.projects-overview.hidden { display:none; }
+.detail-back { display:flex; align-items:center; gap:0.5rem; color:var(--text-secondary,#999); cursor:pointer; margin-bottom:1.5rem; font-size:0.85rem; }
+.detail-back:hover { color:var(--text-primary,#e0e0e0); }
+.detail-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; }
+.detail-header .project-icon { font-size:2rem; }
+.detail-header h2 { margin:0; flex:1; }
+.detail-header .status-badge { padding:0.3rem 0.75rem; border-radius:12px; font-size:0.8rem; font-weight:600; }
+.status-active { background:rgba(0,184,148,0.15); color:#00b894; }
+.status-planning { background:rgba(9,132,227,0.15); color:#0984e3; }
+.status-paused { background:rgba(225,112,85,0.15); color:#e17055; }
+.status-archived { background:rgba(99,110,114,0.15); color:#636e72; }
+
+.detail-stats { display:flex; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+.detail-stat { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:8px; padding:0.75rem 1rem; text-align:center; min-width:100px; }
+.detail-stat .val { font-size:1.3rem; font-weight:700; }
+.detail-stat .lbl { font-size:0.7rem; color:var(--text-secondary,#999); text-transform:uppercase; }
+
+/* ── Kanban Board ── */
+.kanban-toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+.kanban-board { display:grid; grid-template-columns:repeat(4, 1fr); gap:1rem; min-height:300px; }
+@media(max-width:900px){ .kanban-board { grid-template-columns:1fr 1fr; } }
+@media(max-width:600px){ .kanban-board { grid-template-columns:1fr; } }
+.kanban-column { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:8px; padding:0.75rem; min-height:200px; max-height:60vh; overflow-y:auto; }
+.kanban-column-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem; padding-bottom:0.5rem; border-bottom:2px solid var(--border,#333); }
+.kanban-column-header h4 { margin:0; font-size:0.85rem; display:flex; align-items:center; gap:0.4rem; }
+.kanban-column-header .count { background:var(--border,#333); border-radius:10px; padding:0.1rem 0.5rem; font-size:0.7rem; }
+.col-todo .kanban-column-header { border-bottom-color:#636e72; }
+.col-in_progress .kanban-column-header { border-bottom-color:#0984e3; }
+.col-blocked .kanban-column-header { border-bottom-color:#e74c3c; }
+.col-done .kanban-column-header { border-bottom-color:#00b894; }
+
+/* ── Task Cards ── */
+.task-card { background:var(--bg,#121220); border:1px solid var(--border,#333); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem; cursor:grab; transition:all 0.15s; }
+.task-card:hover { border-color:#6C5CE7; }
+.task-card.dragging { opacity:0.5; }
+.task-card-title { font-size:0.85rem; font-weight:600; margin-bottom:0.4rem; }
+.task-card-desc { font-size:0.75rem; color:var(--text-secondary,#999); margin-bottom:0.5rem; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.task-card-meta { display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--text-secondary,#999); }
+.task-card-meta .priority-dot { width:6px; height:6px; border-radius:50%; }
+.task-blocked-reason { background:rgba(231,76,60,0.1); border:1px solid rgba(231,76,60,0.3); border-radius:4px; padding:0.3rem 0.5rem; font-size:0.7rem; color:#e74c3c; margin-top:0.4rem; }
+.kanban-drop-zone { min-height:40px; border:2px dashed transparent; border-radius:6px; transition:all 0.2s; }
+.kanban-drop-zone.drag-over { border-color:#6C5CE7; background:rgba(108,92,231,0.05); }
+
+/* ── Add task inline ── */
+.add-task-btn { width:100%; background:transparent; border:1px dashed var(--border,#333); color:var(--text-secondary,#999); padding:0.5rem; border-radius:6px; cursor:pointer; font-size:0.8rem; margin-top:0.25rem; }
+.add-task-btn:hover { border-color:#6C5CE7; color:#a29bfe; }
+
+/* ── Modal ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; justify-content:center; align-items:center; }
+.modal-overlay.active { display:flex; }
+.modal-box { background:var(--card-bg,#1e1e2e); border:1px solid var(--border,#333); border-radius:12px; padding:1.5rem; width:480px; max-width:90vw; max-height:80vh; overflow-y:auto; }
+.modal-box h3 { margin:0 0 1rem; }
+.form-group { margin-bottom:1rem; }
+.form-group label { display:block; font-size:0.8rem; color:var(--text-secondary,#999); margin-bottom:0.3rem; }
+.form-group input, .form-group select, .form-group textarea { width:100%; background:var(--bg,#121220); border:1px solid var(--border,#333); color:var(--text-primary,#e0e0e0); padding:0.5rem; border-radius:6px; font-size:0.85rem; box-sizing:border-box; }
+.form-group textarea { resize:vertical; min-height:60px; }
+.form-actions { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:1rem; }
+
+.empty-state { text-align:center; padding:3rem; color:var(--text-secondary,#999); }
+.empty-state .empty-icon { font-size:3rem; display:block; margin-bottom:0.5rem; }
+</style>
+
+<!-- Overview -->
+<div class="projects-overview" id="projectsOverview">
+    <div class="projects-header">
+        <h2>All Projects</h2>
+        <div class="projects-toolbar">
+            <input type="text" id="projectSearch" placeholder="Search projects..." oninput="filterAndRender()">
+            <select id="statusFilter" onchange="filterAndRender()">
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="planning">Planning</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+            </select>
+            <button class="btn-primary" onclick="showNewProjectModal()">+ New Project</button>
+        </div>
+    </div>
+
+    <div class="stats-bar" id="statsBar"></div>
+    <div class="projects-grid" id="projectsGrid">
+        <div class="empty-state"><p>Loading projects...</p></div>
+    </div>
+</div>
+
+<!-- Detail View -->
+<div class="project-detail-view" id="projectDetail">
+    <div class="detail-back" onclick="backToOverview()">← All Projects</div>
+    <div id="detailContent"></div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal-overlay" id="newProjectModal">
+    <div class="modal-box">
+        <h3 id="projectModalTitle">New Project</h3>
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="pName" placeholder="Project name">
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea id="pDesc" placeholder="What is this project about?"></textarea>
+        </div>
+        <div style="display:flex;gap:0.75rem;">
+            <div class="form-group" style="flex:1">
+                <label>Status</label>
+                <select id="pStatus">
+                    <option value="planning">Planning</option>
+                    <option value="active">Active</option>
+                    <option value="paused">Paused</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Priority</label>
+                <select id="pPriority">
+                    <option value="medium">Medium</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;">
+            <div class="form-group" style="flex:1">
+                <label>Icon (emoji or leave blank)</label>
+                <input type="text" id="pIcon" value="" maxlength="4" placeholder="Optional">
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Deadline</label>
+                <input type="date" id="pDeadline">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Tags (comma-separated)</label>
+            <input type="text" id="pTags" placeholder="core, platform, ai">
+        </div>
+        <div class="form-actions">
+            <button class="btn-ghost" onclick="closeModal('newProjectModal')">Cancel</button>
+            <button class="btn-primary" id="projectSaveBtn" onclick="saveProject()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- New/Edit Task Modal -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal-box">
+        <h3 id="taskModalTitle">New Task</h3>
+        <input type="hidden" id="tProjectId">
+        <input type="hidden" id="tTaskId">
+        <div class="form-group">
+            <label>Title</label>
+            <input type="text" id="tTitle" placeholder="Task title">
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea id="tDesc" placeholder="Details..."></textarea>
+        </div>
+        <div style="display:flex;gap:0.75rem;">
+            <div class="form-group" style="flex:1">
+                <label>Status</label>
+                <select id="tStatus">
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="done">Done</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Priority</label>
+                <select id="tPriority">
+                    <option value="medium">Medium</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:0.75rem;">
+            <div class="form-group" style="flex:1">
+                <label>Deadline</label>
+                <input type="date" id="tDeadline">
+            </div>
+            <div class="form-group" style="flex:1">
+                <label>Assignee</label>
+                <input type="text" id="tAssignee" placeholder="(optional)">
+            </div>
+        </div>
+        <div class="form-group" id="blockedByGroup" style="display:none">
+            <label>Blocked by (reason)</label>
+            <textarea id="tBlockedBy" placeholder="What's blocking this task?"></textarea>
+        </div>
+        <div class="form-actions">
+            <button class="btn-danger" id="taskDeleteBtn" onclick="deleteTask()" style="margin-right:auto;display:none">Delete</button>
+            <button class="btn-ghost" onclick="closeModal('taskModal')">Cancel</button>
+            <button class="btn-primary" id="taskSaveBtn" onclick="saveTask()">Create</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allProjects = [];
+let currentProject = null;
+let editingProjectId = null;
+const SVG_PROJECT_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+function projectIcon(p) { return `<span class="project-icon">${SVG_PROJECT_ICON}</span>`; }
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', loadProjects);
+
+async function loadProjects() {
+    try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        allProjects = data.projects || [];
+        renderStats();
+        filterAndRender();
+    } catch(e) {
+        document.getElementById('projectsGrid').innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+    }
+}
+
+function renderStats() {
+    const bar = document.getElementById('statsBar');
+    const counts = { all:allProjects.length, active:0, planning:0, paused:0, archived:0 };
+    allProjects.forEach(p => { if(counts[p.status]!==undefined) counts[p.status]++; });
+    bar.innerHTML = [
+        {k:'all',l:'Total',c:''},
+        {k:'active',l:'Active',c:'green'},
+        {k:'planning',l:'Planning',c:'blue'},
+        {k:'paused',l:'Paused',c:'orange'},
+        {k:'archived',l:'Archived',c:'gray'}
+    ].map(s => `
+        <div class="stat-card" onclick="setFilter('${s.k}')">
+            <span class="stat-value ${s.c}">${counts[s.k]}</span>
+            <span class="stat-label">${s.l}</span>
+        </div>`).join('');
+}
+
+function setFilter(status) {
+    document.getElementById('statusFilter').value = status==='all' ? '' : status;
+    filterAndRender();
+}
+
+function filterAndRender() {
+    let filtered = [...allProjects];
+    const sf = document.getElementById('statusFilter').value;
+    if(sf) filtered = filtered.filter(p => p.status===sf);
+    const q = document.getElementById('projectSearch').value.toLowerCase().trim();
+    if(q) filtered = filtered.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description||'').toLowerCase().includes(q) ||
+        (p.tags||[]).some(t => t.toLowerCase().includes(q))
+    );
+    renderGrid(filtered);
+}
+
+function renderGrid(projects) {
+    const grid = document.getElementById('projectsGrid');
+    if(!projects.length) {
+        grid.innerHTML = `<div class="empty-state"><p>No projects found</p></div>`;
+        return;
+    }
+    grid.innerHTML = projects.map(p => {
+        const m = p.metrics || {};
+        const pct = m.completionPercent || 0;
+        const deadlineStr = p.deadline ? formatDeadline(p.deadline) : '';
+        return `
+        <div class="project-card" onclick="openProject('${p.id}')">
+            <div class="accent-bar" style="background:${p.color||'#6C5CE7'}"></div>
+            <div class="project-card-header">
+                ${projectIcon(p)}
+                <h3>${esc(p.name)}</h3>
+                <span class="priority-dot priority-${p.priority||'medium'}"></span>
+            </div>
+            <p class="project-desc">${esc(p.description||'')}</p>
+            ${(p.tags||[]).length ? `<div class="project-tags">${p.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+            <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+            <div class="task-counts">
+                <span><span class="task-dot done"></span> ${m.completedTasks||0} done</span>
+                <span><span class="task-dot in_progress"></span> ${m.inProgressTasks||0} active</span>
+                <span><span class="task-dot blocked"></span> ${m.blockedTasks||0} blocked</span>
+                <span><span class="task-dot todo"></span> ${m.todoTasks||0} todo</span>
+            </div>
+            ${deadlineStr ? `<div class="project-deadline ${isOverdue(p.deadline)?'overdue':''}">${deadlineStr}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ── Project Detail + Kanban ──
+async function openProject(id) {
+    try {
+        const res = await fetch(`/api/projects/${id}`);
+        currentProject = await res.json();
+        document.getElementById('projectsOverview').classList.add('hidden');
+        document.getElementById('projectDetail').classList.add('active');
+        renderDetail();
+    } catch(e) { console.error(e); }
+}
+
+function backToOverview() {
+    document.getElementById('projectDetail').classList.remove('active');
+    document.getElementById('projectsOverview').classList.remove('hidden');
+    currentProject = null;
+    loadProjects();
+}
+
+function renderDetail() {
+    const p = currentProject;
+    const m = p.metrics || {};
+    const tasks = p.tasks || [];
+    const columns = {
+        todo: tasks.filter(t=>t.status==='todo'),
+        in_progress: tasks.filter(t=>t.status==='in_progress'),
+        blocked: tasks.filter(t=>t.status==='blocked'),
+        done: tasks.filter(t=>t.status==='done')
+    };
+    const colLabels = { todo:'To Do', in_progress:'In Progress', blocked:'Blocked', done:'Done' };
+
+    document.getElementById('detailContent').innerHTML = `
+        <div class="detail-header">
+            ${projectIcon(p)}
+            <h2>${esc(p.name)}</h2>
+            <span class="status-badge status-${p.status}">${p.status}</span>
+            <button class="btn-ghost" onclick="showEditProjectModal()">Edit</button>
+            <button class="btn-danger" onclick="deleteProject()">Delete</button>
+        </div>
+        <p style="color:var(--text-secondary,#999);margin-bottom:1.5rem;">${esc(p.description||'')}</p>
+        
+        <div class="detail-stats">
+            <div class="detail-stat"><div class="val">${m.totalTasks||0}</div><div class="lbl">Total</div></div>
+            <div class="detail-stat"><div class="val" style="color:#00b894">${m.completedTasks||0}</div><div class="lbl">Done</div></div>
+            <div class="detail-stat"><div class="val" style="color:#0984e3">${m.inProgressTasks||0}</div><div class="lbl">In Progress</div></div>
+            <div class="detail-stat"><div class="val" style="color:#e74c3c">${m.blockedTasks||0}</div><div class="lbl">Blocked</div></div>
+            <div class="detail-stat"><div class="val">${m.completionPercent||0}%</div><div class="lbl">Complete</div></div>
+        </div>
+
+        <div class="kanban-toolbar">
+            <h3 style="margin:0;">Tasks</h3>
+        </div>
+        <div class="kanban-board">
+            ${Object.entries(columns).map(([status, tasks]) => `
+                <div class="kanban-column col-${status}" ondragover="onDragOver(event)" ondrop="onDrop(event,'${status}')">
+                    <div class="kanban-column-header">
+                        <h4>${colLabels[status]} <span class="count">${tasks.length}</span></h4>
+                    </div>
+                    <div class="kanban-drop-zone" data-status="${status}">
+                        ${tasks.map(t => renderTaskCard(t)).join('')}
+                    </div>
+                    <button class="add-task-btn" onclick="showNewTaskModal('${status}')">+ Add task</button>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderTaskCard(t) {
+    const deadlineStr = t.deadline ? formatDeadline(t.deadline) : '';
+    return `
+        <div class="task-card" draggable="true" data-task-id="${t.id}"
+             ondragstart="onDragStart(event,'${t.id}')" onclick="showEditTaskModal('${t.id}')">
+            <div class="task-card-title">${esc(t.title)}</div>
+            ${t.description ? `<div class="task-card-desc">${esc(t.description)}</div>` : ''}
+            ${t.blockedBy ? `<div class="task-blocked-reason"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> ${esc(t.blockedBy)}</div>` : ''}
+            <div class="task-card-meta">
+                <span><span class="priority-dot priority-${t.priority||'medium'}"></span> ${t.priority||'medium'}</span>
+                ${deadlineStr ? `<span>${deadlineStr}</span>` : ''}
+            </div>
+        </div>`;
+}
+
+// ── Drag & Drop ──
+let draggedTaskId = null;
+function onDragStart(e, taskId) { draggedTaskId = taskId; e.target.classList.add('dragging'); }
+function onDragOver(e) { e.preventDefault(); e.currentTarget.querySelector('.kanban-drop-zone')?.classList.add('drag-over'); }
+function onDrop(e, newStatus) {
+    e.preventDefault();
+    document.querySelectorAll('.kanban-drop-zone').forEach(z => z.classList.remove('drag-over'));
+    if(!draggedTaskId || !currentProject) return;
+    updateTask(draggedTaskId, { status: newStatus });
+    draggedTaskId = null;
+}
+
+// ── API Calls ──
+async function saveProject() {
+    const data = {
+        name: document.getElementById('pName').value.trim(),
+        description: document.getElementById('pDesc').value.trim(),
+        status: document.getElementById('pStatus').value,
+        priority: document.getElementById('pPriority').value,
+        icon: document.getElementById('pIcon').value || '',
+        deadline: document.getElementById('pDeadline').value ? new Date(document.getElementById('pDeadline').value).toISOString() : null,
+        tags: document.getElementById('pTags').value.split(',').map(s=>s.trim()).filter(Boolean)
+    };
+    if(!data.name) return;
+    
+    try {
+        if(editingProjectId) {
+            await fetch(`/api/projects/${editingProjectId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        } else {
+            await fetch('/api/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        }
+        closeModal('newProjectModal');
+        editingProjectId = null;
+        if(currentProject) { await openProject(currentProject.id); } else { await loadProjects(); }
+    } catch(e) { console.error(e); }
+}
+
+async function deleteProject() {
+    if(!currentProject || !confirm(`Delete "${currentProject.name}"?`)) return;
+    await fetch(`/api/projects/${currentProject.id}`, { method:'DELETE' });
+    backToOverview();
+}
+
+async function saveTask() {
+    const pid = document.getElementById('tProjectId').value;
+    const tid = document.getElementById('tTaskId').value;
+    const data = {
+        title: document.getElementById('tTitle').value.trim(),
+        description: document.getElementById('tDesc').value.trim(),
+        status: document.getElementById('tStatus').value,
+        priority: document.getElementById('tPriority').value,
+        deadline: document.getElementById('tDeadline').value ? new Date(document.getElementById('tDeadline').value).toISOString() : null,
+        assignee: document.getElementById('tAssignee').value.trim() || null,
+        blockedBy: document.getElementById('tStatus').value === 'blocked' ? document.getElementById('tBlockedBy').value.trim() || null : null
+    };
+    if(!data.title) return;
+    try {
+        if(tid) {
+            await fetch(`/api/projects/${pid}/tasks/${tid}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        } else {
+            await fetch(`/api/projects/${pid}/tasks`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        }
+        closeModal('taskModal');
+        await openProject(pid);
+    } catch(e) { console.error(e); }
+}
+
+async function updateTask(taskId, data) {
+    if(!currentProject) return;
+    await fetch(`/api/projects/${currentProject.id}/tasks/${taskId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+    });
+    await openProject(currentProject.id);
+}
+
+async function deleteTask() {
+    const pid = document.getElementById('tProjectId').value;
+    const tid = document.getElementById('tTaskId').value;
+    if(!tid || !confirm('Delete this task?')) return;
+    await fetch(`/api/projects/${pid}/tasks/${tid}`, { method:'DELETE' });
+    closeModal('taskModal');
+    await openProject(pid);
+}
+
+// ── Modals ──
+function showNewProjectModal() {
+    editingProjectId = null;
+    document.getElementById('projectModalTitle').textContent = 'New Project';
+    document.getElementById('projectSaveBtn').textContent = 'Create';
+    document.getElementById('pName').value = '';
+    document.getElementById('pDesc').value = '';
+    document.getElementById('pStatus').value = 'planning';
+    document.getElementById('pPriority').value = 'medium';
+    document.getElementById('pIcon').value = '';
+    document.getElementById('pDeadline').value = '';
+    document.getElementById('pTags').value = '';
+    document.getElementById('newProjectModal').classList.add('active');
+}
+
+function showEditProjectModal() {
+    if(!currentProject) return;
+    const p = currentProject;
+    editingProjectId = p.id;
+    document.getElementById('projectModalTitle').textContent = 'Edit Project';
+    document.getElementById('projectSaveBtn').textContent = 'Save';
+    document.getElementById('pName').value = p.name;
+    document.getElementById('pDesc').value = p.description || '';
+    document.getElementById('pStatus').value = p.status;
+    document.getElementById('pPriority').value = p.priority || 'medium';
+    document.getElementById('pIcon').value = p.icon || '';
+    document.getElementById('pDeadline').value = p.deadline ? p.deadline.split('T')[0] : '';
+    document.getElementById('pTags').value = (p.tags||[]).join(', ');
+    document.getElementById('newProjectModal').classList.add('active');
+}
+
+function showNewTaskModal(status) {
+    if(!currentProject) return;
+    document.getElementById('taskModalTitle').textContent = 'New Task';
+    document.getElementById('taskSaveBtn').textContent = 'Create';
+    document.getElementById('taskDeleteBtn').style.display = 'none';
+    document.getElementById('tProjectId').value = currentProject.id;
+    document.getElementById('tTaskId').value = '';
+    document.getElementById('tTitle').value = '';
+    document.getElementById('tDesc').value = '';
+    document.getElementById('tStatus').value = status || 'todo';
+    document.getElementById('tPriority').value = 'medium';
+    document.getElementById('tDeadline').value = '';
+    document.getElementById('tAssignee').value = '';
+    document.getElementById('tBlockedBy').value = '';
+    toggleBlockedField();
+    document.getElementById('taskModal').classList.add('active');
+}
+
+function showEditTaskModal(taskId) {
+    if(!currentProject) return;
+    const t = currentProject.tasks.find(x => x.id === taskId);
+    if(!t) return;
+    document.getElementById('taskModalTitle').textContent = 'Edit Task';
+    document.getElementById('taskSaveBtn').textContent = 'Save';
+    document.getElementById('taskDeleteBtn').style.display = 'block';
+    document.getElementById('tProjectId').value = currentProject.id;
+    document.getElementById('tTaskId').value = t.id;
+    document.getElementById('tTitle').value = t.title;
+    document.getElementById('tDesc').value = t.description || '';
+    document.getElementById('tStatus').value = t.status;
+    document.getElementById('tPriority').value = t.priority || 'medium';
+    document.getElementById('tDeadline').value = t.deadline ? t.deadline.split('T')[0] : '';
+    document.getElementById('tAssignee').value = t.assignee || '';
+    document.getElementById('tBlockedBy').value = t.blockedBy || '';
+    toggleBlockedField();
+    document.getElementById('taskModal').classList.add('active');
+}
+
+document.getElementById('tStatus')?.addEventListener('change', toggleBlockedField);
+function toggleBlockedField() {
+    document.getElementById('blockedByGroup').style.display = document.getElementById('tStatus').value === 'blocked' ? 'block' : 'none';
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+// Close modals on outside click
+['newProjectModal','taskModal'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', function(e) { if(e.target===this) closeModal(id); });
+});
+
+// ── Helpers ──
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function formatDeadline(d) { const dt=new Date(d); const diff=Math.ceil((dt-new Date())/(86400000)); if(diff<0) return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> ${-diff}d overdue`; if(diff===0) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Due today'; if(diff<=7) return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${diff}d left`; return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> ${dt.toLocaleDateString()}`; }
+function isOverdue(d) { return d && new Date(d) < new Date(); }
+</script>
+{% endblock %}
