@@ -27,6 +27,10 @@ It gives your AI collaborator:
 | 🧠 **R-Memory** | Conversation compression — your AI remembers everything, forever |
 | 🎯 **R-Awareness** | Contextual knowledge injection — the right docs at the right time |
 | 📊 **Dashboard** | Mission Control at `localhost:19100` |
+| 💰 **Symbiotic Wallet** | Three-wallet Solana architecture (Human + AI + Symbiotic PDA) |
+| 🏛️ **DAO** | Resonant Chamber — on-chain governance and community treasury |
+| 🪙 **Token Economy** | $RCT (soulbound governance) + $RES (transferable currency) + REX sub-tokens |
+| 🛒 **Protocol Store** | Buy, sell, and trade AI protocol NFTs on-chain |
 | 🛡️ **Shield** | File protection & security governance *(in development)* |
 | ⚖️ **Logician** | Cost & policy validation *(spec phase)* |
 | 🔄 **Guardian** | Self-healing & incident recovery *(in development)* |
