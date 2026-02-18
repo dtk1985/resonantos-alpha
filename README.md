@@ -197,8 +197,10 @@ Together, building proof that human-AI symbiosis works.
 
 ## 📖 Learn More
 
-- [Augmentatism Manifesto](https://augmentatism.com) — The philosophy
+- [ResonantOS](http://resonantos.com) — Official website
+- [Augmentatism Manifesto](http://augmentatism.com) — The philosophy
 - [OpenClaw](https://github.com/openclaw/openclaw) — The kernel
+- [Discord](https://discord.gg/MRESQnf4R4) — Join the community
 
 ---
 
