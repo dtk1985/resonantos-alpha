@@ -1,20 +1,21 @@
 /**
- * R-Memory V4.6.2 — High-Fidelity Compression Extension for OpenClaw
- * @version 4.6.2
- * @date 2026-02-15
+ * R-Memory V4.6.3 — High-Fidelity Compression Extension for OpenClaw
+ * @version 4.6.3
+ * @date 2026-02-19
  *
- * Changes from V4.6.1:
- * - Fixed: background compression now caches ALL blocks (was skipping last block = most turns never cached)
- * - Added: hash comparison logging between agent_end and compaction paths
- * - Added: cache miss diagnostics with text preview for debugging
- * - Result: cache hits at swap time, eliminating double Haiku calls
+ * Changes from V4.6.2:
+ * - Archive-to-memory bridge: FIFO-evicted blocks now written to memory/archive/
+ *   as searchable .md files (indexed by memory_search)
+ * - Multi-provider API key resolution (anthropic/openai/google auto-discovery)
+ *
+ * V4.6.2 changes:
+ * - Fixed: background compression now caches ALL blocks (was skipping last block)
+ * - Added: hash comparison logging, cache miss diagnostics
  *
  * V4.6.1 changes:
  * - Restored blockSize (default 4k tokens) from original spec
  * - Turns larger than blockSize are split at message boundaries
  * - Single messages larger than blockSize are hard-split
- * - No more "stuck with 1 giant turn" — everything becomes manageable blocks
- * - Turn-based grouping still happens first, then blocks are sized
  */
 
 const fs = require("fs");
@@ -67,6 +68,7 @@ let lastProcessedBlockCount = 0;
 const MAX_CACHE_SIZE = 2000;
 let compressionQueue = [];
 let activeCompressions = 0;
+let deferredCompactionMinBlocks = 0; // Step 3: cancel-loop reduction
 
 // ============================================================================
 // Utilities
@@ -612,6 +614,11 @@ function queueBlock(block) {
     return;
   }
   compressionQueue.push({ text: block.text, hash: block.hash });
+  // Step 3: New block created — reset deferred state so next compaction can attempt swap
+  if (deferredCompactionMinBlocks > 0) {
+    deferredCompactionMinBlocks = 0;
+    log("INFO", "Deferred state reset — new block queued");
+  }
   processQueue();
 }
 
@@ -630,6 +637,28 @@ function processQueue() {
 // ============================================================================
 // FIFO eviction at 80k (compressed blocks only)
 // ============================================================================
+function archiveEvictedBlock(block) {
+  // Write compressed block to memory/archive/ so memory_search can find it
+  try {
+    const memArchiveDir = path.join(workspaceDir, "memory", "archive");
+    ensureDir(memArchiveDir);
+    const date = new Date(block.timestamp).toISOString().slice(0, 10);
+    const hash8 = crypto.createHash("sha256").update(block.compressed).digest("hex").slice(0, 8);
+    const filename = `rmem-${date}-${hash8}.md`;
+    const filepath = path.join(memArchiveDir, filename);
+    if (!fs.existsSync(filepath)) {
+      const header = `# R-Memory Archive Block\n` +
+        `- **Date:** ${new Date(block.timestamp).toISOString()}\n` +
+        `- **Session:** ${currentSessionId || "unknown"}\n` +
+        `- **Tokens:** ${block.tokensCompressed} compressed (was ${block.tokensRaw} raw)\n\n---\n\n`;
+      fs.writeFileSync(filepath, header + block.compressed);
+      log("INFO", "Archived to memory/archive", { file: filename, tokens: block.tokensCompressed });
+    }
+  } catch (e) {
+    log("WARN", "Failed to archive evicted block to memory/", { error: e.message });
+  }
+}
+
 function applyFifoEviction() {
   const overheadPerBlock = 15;
   const baseOverhead = 20;
@@ -638,6 +667,7 @@ function applyFifoEviction() {
   while (totalTokens > config.evictTrigger && compactionHistory.length > 0) {
     const oldest = compactionHistory.shift();
     totalTokens -= (oldest.tokensCompressed + overheadPerBlock);
+    archiveEvictedBlock(oldest);
     evicted++;
     log("INFO", "FIFO evicted", { ts: oldest.timestamp, tokens: oldest.tokensCompressed });
   }
@@ -749,6 +779,12 @@ async function handleBeforeCompact(event) {
     return { cancel: true };
   }
 
+  // Step 3: Cancel-loop reduction — skip if we already know there aren't enough blocks
+  if (deferredCompactionMinBlocks > 0 && blocks.length < deferredCompactionMinBlocks) {
+    log("INFO", "Deferred — waiting for more blocks", { have: blocks.length, need: deferredCompactionMinBlocks });
+    return { cancel: true };
+  }
+
   // Calculate overflow
   const overflow = tokensBefore - config.compressTrigger;
   if (overflow <= 0) {
@@ -775,9 +811,13 @@ async function handleBeforeCompact(event) {
   // Always keep at least the last block raw
   if (blocksToSwap >= blocks.length) blocksToSwap = blocks.length - 1;
   if (blocksToSwap <= 0) {
-    log("INFO", "Cannot swap without removing all blocks — cancelling");
+    // Step 3: Set deferred threshold so we don't retry until enough blocks exist
+    deferredCompactionMinBlocks = 2;
+    log("INFO", "Cannot swap without removing all blocks — deferring until ≥2 blocks", { currentBlocks: blocks.length });
     return { cancel: true };
   }
+  // Reset deferred state on successful swap path
+  deferredCompactionMinBlocks = 0;
 
   const toSwap = blocks.slice(0, blocksToSwap);
   const toKeepRaw = blocks.slice(blocksToSwap);
