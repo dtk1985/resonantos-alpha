@@ -400,6 +400,7 @@ function groupEntriesIntoBlocks(branchEntries, startIndex) {
  */
 function getMessageFromEntry(entry) {
   if (entry.type === "message" && entry.message) return entry.message;
+  if (entry.type === "custom") log("DEBUG", "Custom entry structure", { keys: Object.keys(entry), customType: entry.customType, dataType: typeof entry.data, dataPreview: JSON.stringify(entry.data).slice(0, 200) });
   if (entry.type === "custom" && entry.data) return { role: "assistant", content: typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data) };
   if (entry.type === "custom_message") return { role: "custom", content: entry.content || "" };
   if (entry.type === "compaction") return { role: "compactionSummary", summary: entry.summary || "" };
@@ -408,32 +409,90 @@ function getMessageFromEntry(entry) {
 }
 
 // ============================================================================
-// API key resolution
+// API key resolution (provider-aware)
 // ============================================================================
-function resolveApiKey() {
-  if (process.env.ANTHROPIC_API_KEY) { log("INFO", "API key from env"); return process.env.ANTHROPIC_API_KEY; }
+function resolveApiKeyForProvider(provider) {
+  if (!provider) provider = "anthropic";
+  // 1. Check env vars per provider
+  const envMap = { anthropic: "ANTHROPIC_API_KEY", openai: "OPENAI_API_KEY", google: "GOOGLE_API_KEY" };
+  if (envMap[provider] && process.env[envMap[provider]]) {
+    log("INFO", `API key from env (${provider})`); return process.env[envMap[provider]];
+  }
+  try {
+    // 2. Check auth-profiles.json — match by provider name in profile key
+    const agentAuth = path.join(process.env.HOME, ".openclaw", "agents", "main", "agent", "auth-profiles.json");
+    if (fs.existsSync(agentAuth)) {
+      const data = JSON.parse(fs.readFileSync(agentAuth, "utf-8"));
+      if (data.profiles) {
+        for (const [key, profile] of Object.entries(data.profiles)) {
+          if (key.includes(provider) && profile?.token) {
+            log("INFO", `API key from auth-profiles (${key})`); return profile.token;
+          }
+        }
+      }
+    }
+    // 3. Check credentials directory
+    const credDir = path.join(process.env.HOME, ".openclaw", "credentials");
+    if (fs.existsSync(credDir)) {
+      for (const f of fs.readdirSync(credDir)) {
+        if (f.includes(provider) && f.endsWith(".json")) {
+          const data = JSON.parse(fs.readFileSync(path.join(credDir, f), "utf-8"));
+          if (data.token) { log("INFO", `API key from ${f}`); return data.token; }
+        }
+      }
+    }
+  } catch (e) { log("WARN", "Credential scan failed", { error: e.message }); }
+  log("WARN", `No API key found for provider: ${provider}`);
+  return null;
+}
+
+// Discover available providers from auth-profiles
+function discoverProviders() {
+  const providers = [];
   try {
     const agentAuth = path.join(process.env.HOME, ".openclaw", "agents", "main", "agent", "auth-profiles.json");
     if (fs.existsSync(agentAuth)) {
       const data = JSON.parse(fs.readFileSync(agentAuth, "utf-8"));
       if (data.profiles) {
         for (const [key, profile] of Object.entries(data.profiles)) {
-          if (key.includes("anthropic") && profile?.token) { log("INFO", "API key from agent auth-profiles"); return profile.token; }
+          if (profile?.token) {
+            const prov = profile.provider || key.split(":")[0] || "unknown";
+            providers.push({ key, provider: prov });
+          }
         }
       }
     }
-    const credDir = path.join(process.env.HOME, ".openclaw", "credentials");
-    if (fs.existsSync(credDir)) {
-      for (const f of fs.readdirSync(credDir)) {
-        if (f.includes("anthropic") && f.endsWith(".json")) {
-          const data = JSON.parse(fs.readFileSync(path.join(credDir, f), "utf-8"));
-          if (data.token) { log("INFO", "API key from " + f); return data.token; }
-        }
-      }
+  } catch (e) { log("WARN", "Provider discovery failed", { error: e.message }); }
+  return providers;
+}
+
+// Auto-select cheapest compression model from available providers
+const CHEAP_MODELS = {
+  anthropic: "anthropic/claude-haiku-4-5",
+  openai: "openai/gpt-4o-mini",
+  google: "google/gemini-2.0-flash",
+};
+
+function autoSelectCompressionModel() {
+  const providers = discoverProviders();
+  if (providers.length === 0) return null;
+  // Prefer cheapest: haiku > gpt-4o-mini > gemini-flash
+  for (const pref of ["anthropic", "openai", "google"]) {
+    if (providers.some(p => p.provider === pref) && CHEAP_MODELS[pref]) {
+      log("INFO", `Auto-selected compression model: ${CHEAP_MODELS[pref]}`);
+      return CHEAP_MODELS[pref];
     }
-  } catch (e) { log("WARN", "Credential scan failed", { error: e.message }); }
-  log("ERROR", "No API key found — compression disabled");
+  }
+  // Fallback: first available provider
+  const first = providers[0].provider;
+  if (CHEAP_MODELS[first]) return CHEAP_MODELS[first];
   return null;
+}
+
+// Legacy wrapper
+function resolveApiKey() {
+  const model = buildModelObject(config.compressionModel);
+  return resolveApiKeyForProvider(model.provider);
 }
 
 // ============================================================================
@@ -523,7 +582,8 @@ RULES:
 - Redact any API keys, tokens, or secrets — replace with [REDACTED]
 - Use tables instead of prose where possible
 - Remove filler, pleasantries, redundancy
-- Remove reasoning that led to conclusions (keep conclusions)
+- Preserve reasoning behind key decisions (WHY something was chosen, not just WHAT)
+- Remove routine reasoning and intermediate steps that led to obvious conclusions
 - Content inside <PRESERVE_VERBATIM> tags must be kept EXACTLY as-is
 - This is compression, NOT summarization. Minimize information loss.
 - Output must be significantly shorter than input`,
@@ -888,7 +948,23 @@ module.exports = function rMemoryExtension(api) {
     loadConfig();
     loadMessageCache();
     resolvedApiKey = resolveApiKey();
-    log("INFO", "R-Memory V4.6.2 init", {
+    // Auto-select model if no key found for current provider
+    if (!resolvedApiKey) {
+      const autoModel = autoSelectCompressionModel();
+      if (autoModel && autoModel !== config.compressionModel) {
+        log("INFO", `Switching compression model: ${config.compressionModel} → ${autoModel} (key available)`);
+        config.compressionModel = autoModel;
+        // Persist the auto-selection
+        try {
+          const cfgPath = path.join(workspaceDir, config.storageDir, "config.json");
+          const saved = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf-8")) : {};
+          saved.compressionModel = autoModel;
+          fs.writeFileSync(cfgPath, JSON.stringify(saved, null, 2));
+        } catch (e) { log("WARN", "Could not persist auto-selected model", { error: e.message }); }
+        resolvedApiKey = resolveApiKey();
+      }
+    }
+    log("INFO", "R-Memory V4.6.3 init", {
       workspace: workspaceDir,
       compressTrigger: config.compressTrigger,
       evictTrigger: config.evictTrigger,

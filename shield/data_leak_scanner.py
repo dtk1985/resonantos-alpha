@@ -81,7 +81,7 @@ CREDENTIAL_PATTERNS: Dict[str, List[re.Pattern]] = {
     ],
     "generic_secret": [
         re.compile(r"(?i)(password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}"),
-        re.compile(r"(?i)(secret|api_key|apikey|auth_token)\s*[:=]\s*['\"]?[^\s'\"]{8,}"),
+        re.compile(r"(?i)(secret|api_key|apikey|auth_token)\s*[:=]\s*['\"][^\s'\"]{8,}"),
     ],
     "bank_iban": [
         re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}([A-Z0-9]?){0,16}\b"),
