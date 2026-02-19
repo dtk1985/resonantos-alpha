@@ -258,11 +258,17 @@ function renderHierarchy(agents) {
     renderCategory('backgroundAgents', '⚙️ Background Agents', background);
     renderCategory('supportAgents', '🛡️ Support & Monitoring', support);
     if (other.length) {
-        const el = document.createElement('div');
-        el.style.marginTop = '24px';
-        el.id = 'otherAgents';
-        document.getElementById('supportAgents').after(el);
+        let el = document.getElementById('otherAgents');
+        if (!el) {
+            el = document.createElement('div');
+            el.style.marginTop = '24px';
+            el.id = 'otherAgents';
+            document.getElementById('supportAgents').after(el);
+        }
         renderCategory('otherAgents', '📦 Other', other);
+    } else {
+        const existing = document.getElementById('otherAgents');
+        if (existing) existing.remove();
     }
 }
 
