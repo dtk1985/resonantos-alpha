@@ -254,7 +254,7 @@ document.addEventListener('visibilitychange', () => {
 // Session Timer
 // ============================================
 
-const SESSION_RESET_HOURS = [4, 9, 14, 19, 23]; // Claude Max reset schedule
+const SESSION_RESET_HOURS = [4, 9, 14, 19, 23]; // Claude API reset schedule
 
 function initSessionTimer() {
     // Close menu when clicking outside

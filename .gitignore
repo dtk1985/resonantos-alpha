@@ -25,3 +25,7 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+
+# Private SSoT - NEVER share
+ssot/private/
+ssot-template/private/
