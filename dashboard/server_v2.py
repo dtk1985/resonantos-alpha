@@ -2657,13 +2657,15 @@ def api_agents():
     def _resolve_model(agent_id):
         try:
             cfg = json.loads(OPENCLAW_CONFIG.read_text())
+            # Check agent-specific model in the list
+            for entry in cfg.get("agents", {}).get("list", []):
+                if entry.get("id") == agent_id and entry.get("model"):
+                    return entry["model"]
+            # Fall back to defaults
             model = cfg.get("agents", {}).get("defaults", {}).get("model")
-            agent_cfg = cfg.get("agents", {}).get(agent_id, {})
-            if agent_cfg.get("model"):
-                model = agent_cfg["model"]
-            return model or "anthropic/claude-opus-4-6"
+            return model or "unknown"
         except Exception:
-            return "anthropic/claude-opus-4-6"
+            return "unknown"
 
     # Helper: parse identity for emoji/name
     def _parse_identity(workspace_files):
@@ -2754,7 +2756,34 @@ def api_agents():
             **(AGENT_META.get(agent_id, {"tier": 1, "role": "Agent", "category": "other"})),
         })
 
-    # 2. Discover agents from workspace-* directories (not yet in gateway)
+    # 2. Agents from openclaw.json config (always available, even without gateway)
+    try:
+        cfg = json.loads(OPENCLAW_CONFIG.read_text())
+        for agent_entry in cfg.get("agents", {}).get("list", []):
+            agent_id = agent_entry.get("id", "")
+            if not agent_id or agent_id in seen_ids:
+                continue
+            seen_ids.add(agent_id)
+            workspace_files = _read_workspace(agent_id)
+            emoji, name = _parse_identity(workspace_files)
+            # Use the model from this agent's config, or the defaults model
+            model = agent_entry.get("model") or cfg.get("agents", {}).get("defaults", {}).get("model") or "unknown"
+            agents.append({
+                "agentId": agent_id,
+                "isDefault": agent_entry.get("default", False),
+                "status": "configured",
+                "mainModel": model,
+                "heartbeat": {},
+                "sessions": {"count": 0},
+                "workspaceFiles": workspace_files,
+                "emoji": emoji,
+                "displayName": name or agent_id,
+                **(AGENT_META.get(agent_id, {"tier": 0 if agent_entry.get("default") else 1, "role": "Agent", "category": "other"})),
+            })
+    except Exception:
+        pass
+
+    # 3. Discover agents from workspace-* directories (not yet in gateway or config)
     for ws_path in sorted(OPENCLAW_HOME.glob("workspace-*")):
         if not ws_path.is_dir():
             continue
@@ -2942,7 +2971,17 @@ def api_rmemory_available_models():
     except Exception:
         pass
     if not available:
-        available = [{"model": "anthropic/claude-haiku-4-5", "label": "Claude Haiku 4.5 (default)"}]
+        # Fallback: read model from openclaw.json config
+        try:
+            cfg = json.loads(OPENCLAW_CONFIG.read_text())
+            default_model = cfg.get("agents", {}).get("defaults", {}).get("model", "")
+            if default_model:
+                provider = default_model.split("/")[0] if "/" in default_model else "unknown"
+                available = full_models.get(provider, [{"model": default_model, "label": default_model}])
+        except Exception:
+            pass
+    if not available:
+        available = [{"model": "unknown", "label": "No models configured"}]
     return jsonify({"models": available})
 
 @app.route("/api/r-memory/config", methods=["GET", "PUT"])
