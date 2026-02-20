@@ -132,6 +132,13 @@
                     <span class="shield-mode" id="shieldMode" style="display:none;"></span>
                 </a>
 
+                <!-- Logician indicator -->
+                <div class="nav-item" id="logicianStatus" title="Logician Engine" style="cursor:default; opacity:0.7;">
+                    <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
+                    <span class="nav-label">Logician</span>
+                    <span class="shield-mode" id="logicianMode" style="display:none; font-size:10px; margin-left:4px;"></span>
+                </div>
+
                 <div class="nav-section-label">Core</div>
                 <a href="/" class="nav-item {% if active_page == 'overview' or active_page == 'status' %}active{% endif %}">
                     <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
@@ -165,6 +172,10 @@
                 <a href="/wallet" class="nav-item {% if active_page == 'wallet' %}active{% endif %}">
                     <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><circle cx="18" cy="15" r="1"/></svg></span>
                     <span class="nav-label">Wallet & DAO</span>
+                </a>
+                <a href="/protocol-store" class="nav-item {% if active_page == 'protocol-store' %}active{% endif %}">
+                    <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
+                    <span class="nav-label">Protocol Store</span>
                 </a>
                 <a href="/docs" class="nav-item {% if active_page == 'docs' %}active{% endif %}">
                     <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span>
@@ -262,6 +273,33 @@
             }
         }
         
+        // Logician Status
+        async function updateLogicianStatus() {
+            const el = document.getElementById('logicianStatus');
+            const modeEl = document.getElementById('logicianMode');
+            if (!el) return;
+            try {
+                const res = await fetch('/api/logician/status');
+                const data = await res.json();
+                const icon = el.querySelector('.nav-icon');
+                if (data.status === 'healthy') {
+                    el.style.opacity = '1';
+                    if (icon) icon.style.color = 'var(--success)';
+                    if (modeEl) { modeEl.textContent = '●'; modeEl.style.color = 'var(--success)'; modeEl.style.display = 'inline'; }
+                    el.title = 'Logician: healthy — last check ' + (data.lastCheck || 'unknown');
+                } else {
+                    el.style.opacity = '0.7';
+                    if (icon) icon.style.color = 'var(--error)';
+                    if (modeEl) { modeEl.textContent = '●'; modeEl.style.color = 'var(--error)'; modeEl.style.display = 'inline'; }
+                    el.title = 'Logician: ' + (data.status || 'unknown') + ' — ' + (data.lastError || data.error || '');
+                }
+            } catch (e) {
+                el.style.opacity = '0.5';
+                if (modeEl) { modeEl.textContent = '?'; modeEl.style.color = 'var(--warning)'; modeEl.style.display = 'inline'; }
+                el.title = 'Logician: unreachable';
+            }
+        }
+
         // Gateway Restart (with confirmation)
         async function confirmRestartGateway() {
             if (!confirm('Are you sure you want to restart the OpenClaw Gateway? This will briefly disconnect all channels.')) return;
@@ -299,23 +337,27 @@
             }
         }
 
-        // Initial load and periodic refresh
-        document.addEventListener('DOMContentLoaded', () => {
-            updateShieldStatus();
-            updateGatewayStatus();
-            setInterval(updateShieldStatus, 30000);
-            setInterval(updateGatewayStatus, 10000);
-        });
-    </script>
-    <script>
+        // Daily Claim from header icon (no page reload)
         async function headerDailyClaim(e) {
             e.preventDefault();
+            // If on wallet page and dailyClaim() exists, use it directly
             if (typeof dailyClaim === 'function') {
                 dailyClaim();
                 return;
             }
+            // Otherwise navigate to wallet page
             window.location.href = '/wallet#daily-claim';
         }
+
+        // Initial load and periodic refresh
+        document.addEventListener('DOMContentLoaded', () => {
+            updateShieldStatus();
+            updateGatewayStatus();
+            updateLogicianStatus();
+            setInterval(updateShieldStatus, 30000);
+            setInterval(updateGatewayStatus, 10000);
+            setInterval(updateLogicianStatus, 60000);
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

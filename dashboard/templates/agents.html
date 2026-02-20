@@ -4,8 +4,11 @@
 {% block page_title %}Agents{% endblock %}
 
 {% block content %}
-<!-- Orchestrator (Tier 0) -->
-<div id="orchestratorSection"></div>
+<!-- Orchestrator + Memory (side by side) -->
+<div id="orchestratorRow" style="display:flex; align-items:flex-start; justify-content:center; gap:20px; flex-wrap:wrap;">
+    <div id="orchestratorSection"></div>
+    <div id="memoryAgentSection" style="display:none; align-self:center;"></div>
+</div>
 
 <!-- Connection Lines -->
 <div id="connectorLine" style="display:none; text-align:center; padding:4px 0;">
@@ -68,6 +71,39 @@
 .orchestrator-meta-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .orchestrator-meta-value { font-size: 13px; color: var(--text-primary); }
 
+/* Memory agent (sub-orchestrator) */
+.memory-connector {
+    text-align: center; padding: 2px 0;
+}
+.memory-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent, #60a5fa);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    max-width: 340px;
+    margin: 0 auto 8px auto;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+.memory-card:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(96,165,250,0.12); }
+.memory-card::after {
+    content: 'COMPRESSION';
+    position: absolute; top: 6px; right: 10px;
+    font-size: 8px; letter-spacing: 1.2px; color: var(--accent, #60a5fa); opacity: 0.7;
+}
+.memory-card-header { display: flex; align-items: center; gap: 12px; }
+.memory-icon { font-size: 28px; }
+.memory-name { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.memory-role { font-size: 11px; color: var(--accent, #60a5fa); }
+.memory-meta { display: flex; gap: 16px; margin-top: 10px; font-size: 11px; color: var(--text-secondary); }
+.memory-model-select {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 4px; padding: 3px 8px;
+    font-size: 11px; cursor: pointer; margin-top: 8px; width: 100%;
+}
+.memory-model-select:focus { border-color: var(--accent, #60a5fa); outline: none; }
+
 /* Category headers */
 .category-header {
     font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
@@ -112,6 +148,13 @@
     margin-top: 8px;
 }
 .agent-meta-row span { display: flex; align-items: center; gap: 4px; }
+
+.agent-model-select {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 4px; padding: 3px 8px;
+    font-size: 11px; cursor: pointer; margin-top: 8px; width: 100%;
+}
+.agent-model-select:focus { border-color: var(--accent, #60a5fa); outline: none; }
 
 /* Workspace file dots */
 .agent-files { display: flex; gap: 4px; margin-top: 10px; }
@@ -172,6 +215,7 @@ document.addEventListener('DOMContentLoaded', loadAgents);
 
 async function loadAgents() {
     try {
+        await loadAvailableModels();
         const res = await fetch('/api/agents');
         agentsData = await res.json();
         renderHierarchy(agentsData);
@@ -197,8 +241,23 @@ function agentIconHtml(ag, size) {
     return ag.emoji;
 }
 
+// Loaded dynamically from user's configured providers
+let KNOWN_MODELS = [];
+
+async function loadAvailableModels() {
+    try {
+        const res = await fetch('/api/r-memory/available-models');
+        const data = await res.json();
+        KNOWN_MODELS = (data.models || []).map(m => ({value: m.model, label: m.label}));
+    } catch (e) {
+        console.warn('Failed to load available models, using defaults');
+        KNOWN_MODELS = [{value: 'anthropic/claude-haiku-4-5', label: 'Claude Haiku 4.5 (default)'}];
+    }
+}
+
 function renderHierarchy(agents) {
     const orchestrator = agents.find(a => a.tier === 0);
+    const memoryAgent = agents.find(a => a.agentId === 'memory' && a.virtual);
     const direct = agents.filter(a => a.tier === 1 && a.category === 'direct');
     const background = agents.filter(a => a.tier === 1 && a.category === 'background');
     const support = agents.filter(a => a.tier === 1 && a.category === 'support');
@@ -243,6 +302,65 @@ function renderHierarchy(agents) {
         }
     }
 
+    // Memory agent (side by side with orchestrator) — shows both sub-agents
+    if (memoryAgent) {
+        const subs = memoryAgent.subAgents || {};
+        const comp = subs.compression || {};
+        const narr = subs.narrative || {};
+
+        // Build model selector options for compression
+        const compCurrentModel = comp.model || memoryAgent.mainModel || 'anthropic/claude-haiku-4-5';
+        const compOptions = KNOWN_MODELS.map(m =>
+            `<option value="${m.value}" ${m.value === compCurrentModel ? 'selected' : ''}>${m.label}</option>`
+        ).join('');
+        const compInList = KNOWN_MODELS.some(m => m.value === compCurrentModel);
+        const compCustomOpt = compInList ? '' : `<option value="${compCurrentModel}" selected>${compCurrentModel}</option>`;
+
+        // Build model selector options for narrative
+        const narrCurrentModel = narr.model || 'openai/gpt-4o';
+        const narrOptions = KNOWN_MODELS.map(m =>
+            `<option value="${m.value}" ${m.value === narrCurrentModel ? 'selected' : ''}>${m.label}</option>`
+        ).join('');
+        const narrInList = KNOWN_MODELS.some(m => m.value === narrCurrentModel);
+        const narrCustomOpt = narrInList ? '' : `<option value="${narrCurrentModel}" selected>${narrCurrentModel}</option>`;
+
+        const sec = document.getElementById('memoryAgentSection');
+        sec.style.display = 'block';
+        sec.innerHTML = `
+            <div class="memory-card" style="min-width:320px;">
+                <div class="memory-card-header">
+                    <span class="memory-icon">${memoryAgent.emoji}</span>
+                    <div>
+                        <div class="memory-name" style="font-size:18px;">${memoryAgent.displayName}</div>
+                        <div class="memory-role">${memoryAgent.role}</div>
+                    </div>
+                    <span class="agent-status-dot ${memoryAgent.status}" style="margin-left:auto;"></span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+                    <div style="padding:10px 12px; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border);">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                            <span style="font-size:16px;">⚙️</span>
+                            <span style="font-size:12px; font-weight:600; color:var(--text-primary);">${comp.label || 'Compression'}</span>
+                            <span style="font-size:11px; color:var(--text-secondary); margin-left:auto;">${comp.calls ? comp.calls + ' calls' : ''}</span>
+                        </div>
+                        <select class="memory-model-select" onchange="updateCompressionModel(this.value)" title="Compression model" style="margin-top:0;">
+                            ${compCustomOpt}${compOptions}
+                        </select>
+                    </div>
+                    <div style="padding:10px 12px; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border);">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                            <span style="font-size:16px;">📝</span>
+                            <span style="font-size:12px; font-weight:600; color:var(--text-primary);">${narr.label || 'Narrative Tracker'}</span>
+                            <span style="font-size:11px; color:var(--text-secondary); margin-left:auto;">${narr.calls ? narr.calls + ' calls' : ''}</span>
+                        </div>
+                        <select class="memory-model-select" onchange="updateNarrativeModel(this.value)" title="Narrative model" style="margin-top:0;">
+                            ${narrCustomOpt}${narrOptions}
+                        </select>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     // Render category sections
     function renderCategory(containerId, label, agents) {
         if (!agents.length) return;
@@ -273,16 +391,23 @@ function renderHierarchy(agents) {
 }
 
 function renderAgentCard(ag) {
-    const model = (typeof ag.mainModel === 'string' && ag.mainModel ? ag.mainModel : '-').split('/').pop();
+    const model = ag.mainModel || '';
+    const modelShort = model ? model.split('/').pop() : '-';
     const sess = ag.sessions || {};
     const files = ag.workspaceFiles || {};
     const fileNames = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md'];
     const recent = (sess.recent || [])[0];
     const recentAge = recent ? formatAge(recent.age) : 'none';
 
+    const modelOptions = KNOWN_MODELS.map(m =>
+        `<option value="${m.value}" ${m.value === model ? 'selected' : ''}>${m.label}</option>`
+    ).join('');
+    const inList = KNOWN_MODELS.some(m => m.value === model);
+    const customOpt = (!inList && model) ? `<option value="${model}" selected>${model}</option>` : '';
+
     return `
-    <div class="agent-card ${ag.status === 'inactive' ? 'inactive' : ''}" onclick="showAgentDetail('${ag.agentId}')">
-        <div class="agent-card-header">
+    <div class="agent-card ${ag.status === 'inactive' ? 'inactive' : ''}">
+        <div class="agent-card-header" onclick="showAgentDetail('${ag.agentId}')">
             <span class="agent-icon">${agentIconHtml(ag, 32)}</span>
             <div>
                 <div class="agent-name">${ag.displayName}</div>
@@ -291,10 +416,12 @@ function renderAgentCard(ag) {
             <span class="agent-status-dot ${ag.status}"></span>
         </div>
         <div class="agent-meta-row">
-            <span>🧠 ${model}</span>
             <span>📊 ${sess.count || 0} sessions</span>
             <span>🕐 ${recentAge}</span>
         </div>
+        <select class="agent-model-select" onchange="updateAgentModel('${ag.agentId}', this.value)" onclick="event.stopPropagation()" title="Agent model">
+            ${customOpt}${modelOptions}
+        </select>
         <div class="agent-files" title="${fileNames.map(f => f + (files[f] ? ' ✓' : ' ✗')).join(', ')}">
             ${fileNames.map(f => `<span class="file-dot ${files[f] ? 'exists' : ''}" title="${f}"></span>`).join('')}
         </div>
@@ -392,6 +519,107 @@ function escapeHtml(text) {
     const d = document.createElement('div');
     d.textContent = text;
     return d.innerHTML;
+}
+
+async function updateCompressionModel(model) {
+    try {
+        const res = await fetch('/api/r-memory/config', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({compressionModel: model})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const meta = document.querySelector('.memory-meta span');
+            if (meta) meta.textContent = 'Model: ' + model.split('/').pop();
+            showToast('R-Memory model → ' + model.split('/').pop());
+            showRestartBanner();
+        } else {
+            showToast('Failed to update R-Memory model', 'error');
+        }
+    } catch(e) {
+        console.error('Failed to update compression model', e);
+        showToast('Failed to update compression model', 'error');
+    }
+}
+
+async function updateNarrativeModel(model) {
+    try {
+        const res = await fetch('/api/r-memory/narrative-model', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model: model})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('Narrative model → ' + model.split('/').pop());
+            showRestartBanner();
+        } else {
+            showToast('Failed to update narrative model', 'error');
+        }
+    } catch(e) {
+        console.error('Failed to update narrative model', e);
+        showToast('Failed to update narrative model', 'error');
+    }
+}
+
+async function updateAgentModel(agentId, model) {
+    try {
+        const res = await fetch('/api/agents/' + agentId + '/model', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model: model})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const ag = agentsData.find(a => a.agentId === agentId);
+            if (ag) ag.mainModel = model;
+            showToast(`${agentId} model → ${model.split('/').pop()}`);
+            showRestartBanner();
+        } else {
+            showToast(data.error || 'Failed to update model', 'error');
+        }
+    } catch(e) {
+        console.error('Failed to update agent model', e);
+        showToast('Failed to update agent model', 'error');
+    }
+}
+
+function showRestartBanner() {
+    if (document.getElementById('gatewayRestartBanner')) return;
+    const b = document.createElement('div');
+    b.id = 'gatewayRestartBanner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#f59e0b;color:#000;padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:14px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+    b.innerHTML = '⚠️ Gateway restart required for model changes to take effect. <button onclick="restartGateway()" style="background:#000;color:#f59e0b;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:600">Restart Gateway</button> <button onclick="this.parentElement.remove()" style="background:transparent;border:1px solid #000;color:#000;padding:5px 12px;border-radius:6px;cursor:pointer">Dismiss</button>';
+    document.body.prepend(b);
+}
+
+async function restartGateway() {
+    const btn = document.querySelector('#gatewayRestartBanner button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Restarting...'; }
+    try {
+        const res = await fetch('/api/gateway/restart', {method: 'POST'});
+        const data = await res.json();
+        if (data.ok) {
+            showToast('Gateway restarting...');
+            const banner = document.getElementById('gatewayRestartBanner');
+            if (banner) banner.remove();
+        } else {
+            showToast(data.error || 'Restart failed', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Restart Gateway'; }
+        }
+    } catch(e) {
+        showToast('Restart failed: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Restart Gateway'; }
+    }
+}
+
+function showToast(msg, type) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;z-index:999;font-size:13px;color:#fff;background:' + (type==='error'?'#ef4444':'#22c55e');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
 }
 
 function formatAge(ms) {

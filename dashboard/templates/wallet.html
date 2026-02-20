@@ -888,8 +888,8 @@
                     <div style="display:flex; gap:8px; align-items:center;">
                         <input type="number" id="sendAmount" placeholder="Amount" min="0" step="0.01" style="flex:3; min-width:0; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:8px 10px; color:inherit; font-size:13px;">
                         <select id="sendToken" style="flex:1; min-width:70px; max-width:90px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:6px; padding:8px 10px; color:inherit; font-size:13px;">
+                            <option value="SOL">SOL</option>
                             <option value="RES">$RES</option>
-                            <option value="RCT">$RCT</option>
                         </select>
                     </div>
                     <button onclick="sendTokens()" class="btn-primary" style="padding:8px 16px; border-radius:6px; font-size:13px; cursor:pointer;">Send</button>
@@ -1178,61 +1178,19 @@ async function sendTokens() {
         showToast('Connect your Phantom wallet first', 'error');
         return;
     }
-    const provider = window.solana;
-    if (!provider || !provider.isPhantom) {
+    const provider = getPhantomProvider();
+    if (!provider) {
         showToast('Phantom wallet not found', 'error');
         return;
     }
     try {
-        showToast('Building transaction...', 'info');
-        // Step 1: Build the transaction server-side
-        const resp = await fetch('/api/wallet/build-transfer-tx', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                network: currentNetwork,
-                sender: connectedAddress,
-                recipient: recipient,
-                amount: amount,
-                token: token
-            })
-        });
-        const data = await resp.json();
-        if (!resp.ok) {
-            showToast(data.error || 'Failed to build transaction', 'error');
-            return;
+        if (token === 'SOL') {
+            // SOL: direct system transfer from Phantom (no program involved)
+            await sendSolDirect(provider, recipient, amount);
+        } else {
+            // SPL tokens: transfer_out via symbiotic program (from PDA)
+            await sendSplToken(provider, recipient, amount, token);
         }
-
-        // Step 2: Send to Phantom for signing via signAndSendTransaction
-        const txBytes = Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0));
-
-        showToast('Approve in Phantom...', 'info');
-        const result = await provider.request({
-            method: 'signAndSendTransaction',
-            params: {
-                message: data.transaction,  // base64 encoded
-                options: { skipPreflight: true }
-            }
-        });
-        const signature = result.signature;
-
-        showToast('Confirming...', 'info');
-        const rpcUrl = currentNetwork === 'testnet' ? 'https://api.testnet.solana.com' : 'https://api.devnet.solana.com';
-        for (let i = 0; i < 30; i++) {
-            const statusResp = await fetch(rpcUrl, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses',
-                    params: [[signature]]
-                })
-            });
-            const statusData = await statusResp.json();
-            if (statusData.result?.value?.[0]?.confirmationStatus) break;
-            await new Promise(r => setTimeout(r, 1000));
-        }
-
-        showToast(`Sent ${amount} $${token} to ${recipient.slice(0,6)}... ✓`, 'success');
         document.getElementById('sendRecipient').value = '';
         document.getElementById('sendAmount').value = '';
         loadUserWallet();
@@ -1244,6 +1202,119 @@ async function sendTokens() {
             showToast(e.message || 'Transfer failed — try again', 'error');
         }
     }
+}
+
+async function sendSolDirect(provider, recipient, amount) {
+    showToast('Building SOL transfer...', 'info');
+    const resp = await fetch('/api/wallet/build-sol-transfer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            network: currentNetwork,
+            sender: connectedAddress,
+            recipient: recipient,
+            amount: amount
+        })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        showToast(data.error || 'Failed to build SOL transfer', 'error');
+        return;
+    }
+    const sig = await signAndSend(provider, data.transaction, false);
+    await confirmTransaction(sig, amount, 'SOL', recipient);
+}
+
+async function sendSplToken(provider, recipient, amount, token) {
+    showToast('Building transaction...', 'info');
+    const resp = await fetch('/api/wallet/build-transfer-tx', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            network: currentNetwork,
+            sender: connectedAddress,
+            recipient: recipient,
+            amount: amount,
+            token: token
+        })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+        showToast(data.error || 'Failed to build transaction', 'error');
+        return;
+    }
+    const sig = await signAndSend(provider, data.transaction, true);
+    await confirmTransaction(sig, amount, '$' + token, recipient);
+}
+
+async function signAndSend(provider, txBase64, skipPreflight) {
+    showToast('Approve in Phantom...', 'info');
+    const txBytes = Uint8Array.from(atob(txBase64), c => c.charCodeAt(0));
+
+    // Phantom signAndSendTransaction accepts a VersionedTransaction-like object
+    // that has a serialize() method returning Uint8Array.
+    // We use the Phantom provider.request API with base58-encoded transaction.
+    // Since we have base64, convert to bytes then to base58 for Phantom.
+
+    // Helper: bytes → base58
+    function toBase58(bytes) {
+        const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+        let result = '';
+        let digits = [0];
+        for (let i = 0; i < bytes.length; i++) {
+            let carry = bytes[i];
+            for (let j = 0; j < digits.length; j++) {
+                carry += digits[j] << 8;
+                digits[j] = carry % 58;
+                carry = (carry / 58) | 0;
+            }
+            while (carry > 0) {
+                digits.push(carry % 58);
+                carry = (carry / 58) | 0;
+            }
+        }
+        for (let i = 0; bytes[i] === 0 && i < bytes.length - 1; i++) result += ALPHABET[0];
+        for (let i = digits.length - 1; i >= 0; i--) result += ALPHABET[digits[i]];
+        return result;
+    }
+
+    // Sign via Phantom request API (expects base58-encoded serialized tx)
+    const resp = await provider.request({
+        method: 'signAndSendTransaction',
+        params: {
+            transaction: toBase58(txBytes),
+            options: { skipPreflight: skipPreflight, preflightCommitment: 'confirmed' }
+        }
+    });
+
+    // resp.signature is the transaction signature (base58 string)
+    return resp.signature;
+}
+
+async function confirmTransaction(signature, amount, symbol, recipient) {
+    showToast('Confirming...', 'info');
+    const rpcUrl = currentNetwork === 'testnet' ? 'https://api.testnet.solana.com' : 'https://api.devnet.solana.com';
+    for (let i = 0; i < 30; i++) {
+        const statusResp = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses',
+                params: [[signature]]
+            })
+        });
+        const statusData = await statusResp.json();
+        const status = statusData.result?.value?.[0];
+        if (status?.confirmationStatus) {
+            if (status.err) {
+                showToast('Transaction failed on-chain — check explorer', 'error');
+                return;
+            }
+            break;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+    }
+    showToast(`Sent ${amount} ${symbol} to ${recipient.slice(0,6)}... ✓`, 'success');
 }
 
 // Configuration

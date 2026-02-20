@@ -326,7 +326,7 @@
 
                 <h4 style="margin:0 0 8px;font-size:14px;color:var(--text-primary);">macOS</h4>
                 <p style="color:var(--text-secondary,#aaa);line-height:1.7;margin-bottom:12px;">
-                    Uses <code>chflags uchg</code> (OS-level immutable flag). Locking is instant, unlocking requires your Mac user password. This is the strongest protection available — even the AI running as your user cannot bypass it without the password.
+                    Uses <code>chflags schg</code> (system-level immutable flag). Both locking and unlocking require your Mac user password. This is the strongest protection available — even root-level processes cannot bypass it without explicit authorization.
                 </p>
 
                 <h4 style="margin:0 0 8px;font-size:14px;color:var(--text-primary);">Auto-Relock</h4>
@@ -436,6 +436,7 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
     let isCompressedView = false;
     let isDirty = false;
     let relockTimers = {};
+    let _cachedPwd = null; // Cached for auto-relock; cleared on page unload
 
     // Track expanded layers/subdirs (persisted in sessionStorage)
     let expandedNodes = new Set(JSON.parse(sessionStorage.getItem('ssot_expanded') || '[]'));
@@ -630,9 +631,13 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
             if (r.ok) { showToast('Unlocked'); await reload(); }
             else { showToast('Unlock failed', true); }
         } else {
-            const r = await fetch('/api/r-memory/lock/' + encodeURIComponent(path), { method: 'POST' });
+            const pw = await promptPassword('Lock document', path.split('/').pop());
+            if (!pw) return;
+            const r = await fetch('/api/r-memory/lock/' + encodeURIComponent(path), {
+                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({password: pw})
+            });
             if (r.ok) { showToast('Locked'); await reload(); }
-            else { showToast('Lock failed', true); }
+            else { showToast('Lock failed (wrong password?)', true); }
         }
     };
 
@@ -756,6 +761,7 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
                 });
                 const data = await res.json();
                 if (data.ok) {
+                    _cachedPwd = pw; // Cache for auto-relock
                     showToast('Document unlocked');
                     startRelockTimer(currentDoc.path);
                     await reload();
@@ -764,13 +770,21 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
                 }
             } catch(e) { showToast('Unlock failed', true); }
         } else {
+            const pw = _cachedPwd || await promptPassword('Lock document', currentDoc.name);
+            if (!pw) return;
             try {
-                const res = await fetch(`/api/r-memory/lock/${encodeURIComponent(currentDoc.path)}`, { method: 'POST' });
+                const res = await fetch(`/api/r-memory/lock/${encodeURIComponent(currentDoc.path)}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ password: pw })
+                });
                 const data = await res.json();
                 if (data.ok) {
                     clearRelockTimer(currentDoc.path);
                     showToast('Document locked');
                     await reload();
+                } else {
+                    showToast('Lock failed (wrong password?)', true);
                 }
             } catch(e) { showToast('Lock failed', true); }
         }
@@ -791,9 +805,16 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
             if (info.remaining <= 0) {
                 clearInterval(interval);
                 delete relockTimers[path];
-                // Auto-relock
-                fetch(`/api/r-memory/lock/${encodeURIComponent(path)}`, { method: 'POST' })
-                    .then(() => reload());
+                // Auto-relock (uses cached password from unlock)
+                if (_cachedPwd) {
+                    fetch(`/api/r-memory/lock/${encodeURIComponent(path)}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ password: _cachedPwd })
+                    }).then(() => reload());
+                } else {
+                    showToast('Auto-relock skipped — no cached password', true);
+                }
             }
         }, 1000);
         info.timer = interval;
@@ -832,8 +853,14 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
 
     // Layer lock/unlock
     window.lockLayer = async function(layer) {
+        const pw = await promptPassword('Lock layer', layer);
+        if (!pw) return;
         try {
-            const res = await fetch(`/api/r-memory/lock-layer/${layer}`, { method: 'POST' });
+            const res = await fetch(`/api/r-memory/lock-layer/${layer}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ password: pw })
+            });
             const data = await res.json();
             showToast(data.ok ? `${layer} locked (${data.count} docs)` : 'Failed: ' + data.error, !data.ok);
             await reload();
@@ -852,6 +879,7 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
             const data = await res.json();
             showToast(data.ok ? `${layer} unlocked (${data.count} docs)` : 'Failed: ' + data.error, !data.ok);
             if (data.ok) {
+                _cachedPwd = pw; // Cache for auto-relock
                 // Start relock timers for all unlocked docs
                 allDocs.filter(d => d.layer === layer).forEach(d => startRelockTimer(d.path));
             }
@@ -924,10 +952,10 @@ icacls "C:\path\to\doc.md" /deny Everyone:(W,D)  # Stronger</code></pre>
         box.style.cssText = 'background:#1a1a2e;border:1px solid #333;border-radius:8px;padding:24px;width:400px;max-width:90vw;';
         var h = document.createElement('h3');
         h.style.cssText = 'margin:0 0 16px;font-size:18px;';
-        h.innerHTML = 'Unlock <span id="pwdAction">Unlock</span>';
+        h.innerHTML = '<span id="pwdAction">Unlock</span>';
         var p = document.createElement('p');
         p.style.cssText = 'color:#888;font-size:13px;margin-bottom:12px;';
-        p.innerHTML = 'Enter system password to unlock <strong id="pwdTarget"></strong>';
+        p.innerHTML = 'Enter system password for <strong id="pwdTarget"></strong>';
         var inp = document.createElement('input');
         inp.type = 'password';
         inp.id = 'pwdInput';

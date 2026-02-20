@@ -1,9 +1,25 @@
 /**
- * R-Memory V4.6.3 — High-Fidelity Compression Extension for OpenClaw
- * @version 4.6.3
- * @date 2026-02-19
+ * R-Memory V5.0.1-alpha — High-Fidelity Compression Extension for OpenClaw
+ * @version 5.0.1-alpha
+ * @date 2026-02-20
  *
- * Changes from V4.6.2:
+ * Changes from V4.8.1:
+ * - Fix 1: Narrative tracker quality upgrade: structured prompt (Task/Decisions/Pending/State)
+ * - Fix 1: Previous thread state fed into prompt for continuity across updates
+ * - Fix 2: No-op swap filter: blocks < minSwapTokens (default 50) skipped in compaction
+ * - Fix 3: Background pre-compression disabled (75% cache miss rate due to hash mismatch)
+ *   Compression now on-demand at compaction time only, saving wasted API calls
+ *
+ * Changes from V4.7.0:
+ * - Configurable compression and narrative models
+ * - Concurrency cap for parallel background calls
+ *
+ * Changes from V4.6.3:
+ * - Narrative Tracker: writes SESSION_THREAD.md after each AI response via Haiku
+ *   (~200-word working memory summary: current task, direction, blockers, state)
+ *   Survives compaction (workspace file, not transcript). Fire-and-forget.
+ *
+ * V4.6.3 changes:
  * - Archive-to-memory bridge: FIFO-evicted blocks now written to memory/archive/
  *   as searchable .md files (indexed by memory_search)
  * - Multi-provider API key resolution (anthropic/openai/google auto-discovery)
@@ -50,7 +66,9 @@ const DEFAULT_CONFIG = {
   compressTrigger: 36000,
   blockSize: 4000,
   minCompressChars: 200,
+  minSwapTokens: 50,
   compressionModel: "anthropic/claude-haiku-4-5",
+  narrativeModel: null, // null = use compressionModel; set explicitly to use a different model (e.g. "anthropic/claude-opus-4-6")
   maxParallelCompressions: 4,
   storageDir: "r-memory",
   archiveDir: "r-memory/archive",
@@ -69,6 +87,53 @@ const MAX_CACHE_SIZE = 2000;
 let compressionQueue = [];
 let activeCompressions = 0;
 let deferredCompactionMinBlocks = 0; // Step 3: cancel-loop reduction
+
+// ============================================================================
+// Camouflage — Traffic Origin Segregation
+// ============================================================================
+
+// ============================================================================
+// Background Agent Usage Tracking
+// ============================================================================
+const usageStats = {
+  compression: { calls: 0, inputTokens: 0, outputTokens: 0, errors: 0, lastCall: null },
+  narrative: { calls: 0, inputTokens: 0, outputTokens: 0, errors: 0, lastCall: null },
+  // heartbeat tracked separately by dashboard via gateway logs
+};
+
+function loadUsageStats() {
+  try {
+    const p = path.join(workspaceDir, config.storageDir, "usage-stats.json");
+    if (fs.existsSync(p)) {
+      const saved = JSON.parse(fs.readFileSync(p, "utf-8"));
+      if (saved.compression) Object.assign(usageStats.compression, saved.compression);
+      if (saved.narrative) Object.assign(usageStats.narrative, saved.narrative);
+    }
+  } catch (e) { log("WARN", "Could not load usage stats", { error: e.message }); }
+}
+
+function saveUsageStats() {
+  try {
+    const p = path.join(workspaceDir, config.storageDir, "usage-stats.json");
+    fs.writeFileSync(p, JSON.stringify(usageStats, null, 2));
+  } catch (e) { /* non-critical */ }
+}
+
+function trackUsage(agentType, inputTokens, outputTokens, isError = false) {
+  const s = usageStats[agentType];
+  if (!s) return;
+  s.calls++;
+  s.inputTokens += inputTokens;
+  s.outputTokens += outputTokens;
+  if (isError) s.errors++;
+  s.lastCall = new Date().toISOString();
+  saveUsageStats();
+}
+
+
+/**
+ * Model resolution and API key helpers are defined below.
+ */
 
 // ============================================================================
 // Utilities
@@ -575,6 +640,8 @@ async function compressSingleBlock(rawText) {
     return { compressed: rawText, tokensRaw: rawTokens, tokensCompressed: rawTokens };
   }
   const model = buildModelObject(config.compressionModel);
+  const apiKey = resolveApiKeyForProvider(model.provider);
+  if (!apiKey) return null;
   try {
     const response = await completeSimple(model, {
       systemPrompt: `You are a high-fidelity conversation compressor.
@@ -590,8 +657,8 @@ RULES:
 - This is compression, NOT summarization. Minimize information loss.
 - Output must be significantly shorter than input`,
       messages: [{ role: "user", content: [{ type: "text", text: `Compress this conversation block:\n\n${rawText}` }], timestamp: Date.now() }],
-    }, { maxTokens: Math.ceil(rawTokens * 0.8), apiKey: resolvedApiKey });
-    if (response.stopReason === "error") { log("ERROR", "Haiku error", { error: response.errorMessage }); return null; }
+    }, { maxTokens: Math.ceil(rawTokens * 0.8), apiKey });
+    if (response.stopReason === "error") { log("ERROR", "Compression model error", { error: response.errorMessage, provider: model.provider }); return null; }
     const compressed = response.content.filter(c => c.type === "text").map(c => c.text).join("\n");
     const compressedTokens = estimateTokens(compressed);
     if (compressedTokens >= rawTokens * 0.95) {
@@ -599,8 +666,16 @@ RULES:
     }
     const saving = ((1 - compressedTokens / rawTokens) * 100).toFixed(1);
     log("DEBUG", "Block compressed", { rawTokens, compressedTokens, saving: `${saving}%` });
+    trackUsage("compression", rawTokens, compressedTokens);
+    // Training data collection
+    try {
+      const tdDir = path.join(workspaceDir, config.storageDir, "training-data", "compression");
+      ensureDir(tdDir);
+      const ts = Date.now();
+      fs.appendFileSync(path.join(tdDir, "pairs.jsonl"), JSON.stringify({ ts, input: rawText, output: compressed, inputTokens: rawTokens, outputTokens: compressedTokens }) + "\n");
+    } catch (e) { /* non-fatal */ }
     return { compressed, tokensRaw: rawTokens, tokensCompressed: compressedTokens };
-  } catch (e) { log("ERROR", "Compression error", { error: e.message }); return null; }
+  } catch (e) { log("ERROR", "Compression error", { error: e.message }); trackUsage("compression", rawTokens, 0, true); return null; }
 }
 
 // ============================================================================
@@ -623,14 +698,13 @@ function queueBlock(block) {
 }
 
 function processQueue() {
-  while (compressionQueue.length > 0 && activeCompressions < config.maxParallelCompressions) {
+  // Fix 3: Skip background pre-compression — 75% of pre-compressed blocks never cache-hit
+  // due to hash mismatch between agent_end (messages) and compaction (entries) block grouping.
+  // Compression now happens on-demand at compaction time only, saving wasted API calls.
+  // Archive still runs to preserve raw blocks on disk.
+  while (compressionQueue.length > 0) {
     const item = compressionQueue.shift();
-    activeCompressions++;
     archiveRawBlock(item.hash, item.text);
-    compressSingleBlock(item.text)
-      .then(result => { if (result) { messageCache.set(item.hash, result); if (messageCache.size % 10 === 0) saveMessageCache(); } })
-      .catch(e => log("ERROR", "Background compression failed", { hash: item.hash, error: e.message }))
-      .finally(() => { activeCompressions--; processQueue(); });
   }
 }
 
@@ -762,12 +836,18 @@ async function handleBeforeCompact(event) {
   }
   // === END DIAGNOSTIC ===
 
-  const blocks = groupEntriesIntoBlocks(branchEntries, startIdx);
+  const allBlocks = groupEntriesIntoBlocks(branchEntries, startIdx);
+
+  // Fix 2: Filter out tiny blocks (no-op swap prevention)
+  const minTokens = config.minSwapTokens || 50;
+  const blocks = allBlocks.filter(b => b.tokens >= minTokens);
+  const skippedTiny = allBlocks.length - blocks.length;
 
   const tokensBefore = preparation?.tokensBefore || 0;
   log("INFO", "=== COMPACTION ===", {
     tokensBefore,
     blocks: blocks.length,
+    skippedTiny,
     blockSizes: blocks.map(b => b.tokens),
     blockHashes: blocks.map(b => b.hash.slice(0, 8)),
     prevCompaction: prevCompactionIndex >= 0,
@@ -974,6 +1054,167 @@ async function handleBeforeCompact(event) {
 }
 
 // ============================================================================
+// Narrative Tracker — Working Memory (SESSION_THREAD.md)
+//
+// Writes a ~200-word "where are we" summary after each AI response.
+// Survives compaction because it's a workspace file, not transcript.
+// Complements compression: blocks = facts, narrative = thread/intent.
+// ============================================================================
+async function updateNarrativeThread(messages) {
+  if (!completeSimple) return;
+  if (!messages || messages.length < 2) return;
+  const narrativeModelStr = config.narrativeModel || config.compressionModel;
+  const narrativeApiKey = resolveApiKeyForProvider(buildModelObject(narrativeModelStr).provider);
+  if (!narrativeApiKey) return;
+
+  try {
+    // Extract last 10 message pairs (human + AI) for broad context
+    // We scan RAW messages — not compressed — to capture full intent
+    const recentExchanges = [];
+    let extractedTokens = 0;
+    const MAX_INPUT_TOKENS = 6000;
+
+    for (let i = messages.length - 1; i >= 0 && extractedTokens < MAX_INPUT_TOKENS; i--) {
+      const msg = messages[i];
+      let text = "";
+      if (msg.role === "user") {
+        if (typeof msg.content === "string") text = msg.content;
+        else if (Array.isArray(msg.content)) {
+          text = msg.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        }
+        if (text.trim()) {
+          const truncated = text.slice(0, 3000);
+          recentExchanges.unshift({ role: "human", text: truncated });
+          extractedTokens += estimateTokens(truncated);
+        }
+      } else if (msg.role === "assistant") {
+        const parts = [];
+        if (Array.isArray(msg.content)) {
+          for (const b of msg.content) {
+            if (b.type === "text") parts.push(b.text);
+            else if (b.type === "toolCall") parts.push(`[Tool: ${b.name}]`);
+          }
+        }
+        text = parts.join("\n").slice(0, 3000);
+        if (text.trim()) {
+          recentExchanges.unshift({ role: "ai", text });
+          extractedTokens += estimateTokens(text);
+        }
+      }
+    }
+
+    if (recentExchanges.length === 0) return;
+
+    // Read FULL previous narrative (this is the evolving document — never truncate)
+    const threadPath = path.join(workspaceDir, "SESSION_THREAD.md");
+    let previousNarrative = "";
+    try {
+      if (fs.existsSync(threadPath)) {
+        previousNarrative = fs.readFileSync(threadPath, "utf-8");
+      }
+    } catch (_) {}
+
+    // If narrative is getting large, only send last 4000 chars as context
+    // but instruct the AI to preserve the full structure
+    const narrativeContext = previousNarrative.length > 4000
+      ? previousNarrative.slice(-4000)
+      : previousNarrative;
+
+    const contextText = [
+      "=== CURRENT NARRATIVE (evolve this, do NOT rewrite from scratch) ===",
+      narrativeContext || "(empty — first update, create fresh)",
+      "",
+      "=== RAW MESSAGES (most recent conversation, chronological) ===",
+      ...recentExchanges.map(e => `[${e.role}]: ${e.text}`),
+    ].join("\n");
+
+    // Narrative model: config.narrativeModel overrides default compression model
+    let narrativeModelStr = config.narrativeModel || config.compressionModel;
+    log("DEBUG", "Narrative model", { model: narrativeModelStr });
+    const narrativeModel = buildModelObject(narrativeModelStr);
+    const response = await completeSimple(narrativeModel, {
+      systemPrompt: `You maintain an EVOLVING narrative document that serves as working memory for an AI assistant. This document survives context resets (compaction) and is the ONLY bridge between memory states. It is written BY AI, FOR AI — optimize for machine readability, not human aesthetics.
+
+OUTPUT FORMAT:
+
+## Mission
+One line: the overarching goal of the current session/day. Only change when the human redirects to a fundamentally different objective.
+
+## Thread
+Sequential, branching narrative of events. Format:
+- [N] TOPIC: what happened + why (reasoning, trigger)
+  - [N.1] Sub-action or branch detail
+  - [N.2] Outcome, error, or resolution
+  → merged back / resolved / abandoned
+
+Sequence numbers (1, 2, 3...) track ORDER, not time. Sub-events use decimals (1.1, 1.2). This is the BACKBONE — shows flow of work including branches and merges.
+
+CRITICAL RULES for Thread:
+- APPEND new events. Never delete or rewrite existing entries.
+- When topics switch, note the trigger: "Human asked X because Y"
+- When a branch resolves, mark it: → resolved (outcome)
+- When approaching space limits, COMPRESS old resolved branches into single lines. Keep active/recent branches detailed.
+
+## Active
+What we're doing RIGHT NOW. 2-3 sentences: task, why, trigger, expected outcome. This is the volatile section — rewrite freely.
+
+## Decisions
+Accumulative list of meaningful choices with brief reasoning. Add new ones at the bottom. Only remove if truly obsolete. Be specific: names, versions, paths, values.
+
+## Errors
+Anything that went wrong, including what was tried. Remove once resolved.
+
+RULES:
+- EVOLVE, don't restart. The narrative you receive is the living document — add to it.
+- Be SPECIFIC: file paths, version numbers, config values, model names.
+- Track WHY, not just WHAT. Intent > action.
+- Max 600 words. If approaching limit, compress oldest resolved Thread entries first.
+- No prose filler. Dense, structured, information-rich.
+- Sequence matters more than timestamps. What came before what? What caused what?`,
+      messages: [{
+        role: "user",
+        content: [{ type: "text", text: contextText }],
+        timestamp: Date.now(),
+      }],
+    }, { maxTokens: 1200, apiKey: narrativeApiKey });
+
+    if (response.stopReason === "error") {
+      log("WARN", "Narrative call failed", { error: response.errorMessage });
+      trackUsage("narrative", estimateTokens(contextText), 0, true);
+      return;
+    }
+
+    const narrative = response.content.filter(c => c.type === "text").map(c => c.text).join("\n").trim();
+    if (!narrative || narrative.length < 20) return;
+
+    const inputTokens = estimateTokens(contextText);
+    const outputTokens = estimateTokens(narrative);
+    trackUsage("narrative", inputTokens, outputTokens);
+    // Training data collection
+    try {
+      const tdDir = path.join(workspaceDir, config.storageDir, "training-data", "narrative");
+      ensureDir(tdDir);
+      const ts = Date.now();
+      fs.appendFileSync(path.join(tdDir, "pairs.jsonl"), JSON.stringify({ ts, input: contextText, output: narrative, inputTokens, outputTokens }) + "\n");
+    } catch (e) { /* non-fatal */ }
+
+    const content = [
+      "# Session Thread — Working Memory",
+      `_Updated: ${new Date().toISOString().slice(0, 19).replace("T", " ")} | Auto-generated by R-Memory_`,
+      "",
+      narrative,
+      "",
+    ].join("\n");
+
+    fs.writeFileSync(threadPath, content);
+    log("INFO", "Narrative updated", { words: narrative.split(/\s+/).length, chars: narrative.length, model: narrativeModelStr });
+  } catch (e) {
+    log("WARN", "Narrative tracker error (non-fatal)", { error: e.message });
+    trackUsage("narrative", 0, 0, true);
+  }
+}
+
+// ============================================================================
 // Extension entry point
 // ============================================================================
 module.exports = function rMemoryExtension(api) {
@@ -986,6 +1227,7 @@ module.exports = function rMemoryExtension(api) {
     ensureDir(path.join(workspaceDir, config.storageDir));
     ensureDir(path.join(workspaceDir, config.archiveDir));
     loadConfig();
+    loadUsageStats();
     loadMessageCache();
     resolvedApiKey = resolveApiKey();
     // Auto-select model if no key found for current provider
@@ -1004,14 +1246,14 @@ module.exports = function rMemoryExtension(api) {
         resolvedApiKey = resolveApiKey();
       }
     }
-    log("INFO", "R-Memory V4.6.3 init", {
+    log("INFO", "R-Memory V4.8.1 init", {
       workspace: workspaceDir,
       compressTrigger: config.compressTrigger,
       evictTrigger: config.evictTrigger,
       blockSize: config.blockSize,
       haiku: !!completeSimple,
       apiKey: !!resolvedApiKey,
-      cachedBlocks: messageCache.size
+      cachedBlocks: messageCache.size,
     });
   }
 
@@ -1065,6 +1307,11 @@ module.exports = function rMemoryExtension(api) {
         queue: compressionQueue.length,
         cache: messageCache.size
       });
+
+      // Narrative tracker: update SESSION_THREAD.md (fire and forget)
+      updateNarrativeThread(messages).catch(e =>
+        log("WARN", "Narrative async error", { error: e.message })
+      );
     } catch (e) { log("ERROR", "agent_end error", { error: e.message }); }
   });
 

@@ -69,7 +69,10 @@
 <div class="card memory-health-card">
     <div class="card-header">
         <h2 class="card-title">Memory & Context Health</h2>
-        <span class="card-subtitle" id="memoryTurn"></span>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <a href="/agents" style="font-size:12px; padding:4px 12px; border-radius:6px; background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); text-decoration:none; cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='rgba(99,102,241,0.25)'" onmouseout="this.style.background='rgba(99,102,241,0.15)'">⚙️ Select Model</a>
+            <span class="card-subtitle" id="memoryTurn"></span>
+        </div>
     </div>
     <div class="card-content">
         <!-- Context Window Bar (Mac Storage Style) -->
@@ -183,6 +186,19 @@
 
 {% block extra_css %}
 <style>
+/* Toast notifications */
+.toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    padding: 12px 24px; border-radius: 8px; color: #fff; font-size: 14px;
+    z-index: 10000; animation: toastIn .3s ease, toastOut .3s ease 2.7s forwards;
+    pointer-events: none;
+}
+.toast.success { background: var(--success, #10b981); }
+.toast.error { background: var(--network-mainnet, #ef4444); }
+.toast.info { background: var(--res-mint, #3b82f6); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+@keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+
 /* Gateway Banner */
 .gateway-banner {
     display: flex;
@@ -682,6 +698,17 @@ document.getElementById('btnOpenRmemLog').addEventListener('click', async () => 
         console.error('Failed to open log:', e);
     }
 });
+
+// --- Toast ---
+function showToast(message, type = 'info') {
+    const t = document.createElement('div');
+    t.className = 'toast ' + type;
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+// Effective models: configured via Agents page (link in header)
 
 // Gateway restart handled by base.html confirmRestartGateway()
 </script>
