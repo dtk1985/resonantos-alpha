@@ -2673,7 +2673,7 @@ def api_agents():
             # 2. Check agents.defaults.model
             default_model = cfg.get("agents", {}).get("defaults", {}).get("model")
             if default_model:
-                return default_model
+                return default_model.get("primary", str(default_model)) if isinstance(default_model, dict) else default_model
             # 3. Check top-level model
             top_model = cfg.get("model")
             if top_model:
@@ -2782,7 +2782,8 @@ def api_agents():
             workspace_files = _read_workspace(agent_id)
             emoji, name = _parse_identity(workspace_files)
             # Use the model from this agent's config, or the defaults model
-            model = agent_entry.get("model") or cfg.get("agents", {}).get("defaults", {}).get("model") or "unknown"
+            raw = agent_entry.get("model") or cfg.get("agents", {}).get("defaults", {}).get("model") or "unknown"
+            model = raw.get("primary", str(raw)) if isinstance(raw, dict) else raw
             agents.append({
                 "agentId": agent_id,
                 "isDefault": agent_entry.get("default", False),
@@ -3007,7 +3008,12 @@ def api_rmemory_available_models():
         # Fallback: read model from openclaw.json config
         try:
             cfg = json.loads(OPENCLAW_CONFIG.read_text())
-            default_model = cfg.get("agents", {}).get("defaults", {}).get("model", "")
+            raw_model = cfg.get("agents", {}).get("defaults", {}).get("model", "") or cfg.get("model", "")
+            # model can be string or {"primary": "...", "fallbacks": [...]}
+            if isinstance(raw_model, dict):
+                default_model = raw_model.get("primary", "")
+            else:
+                default_model = raw_model
             if default_model:
                 provider = default_model.split("/")[0] if "/" in default_model else "unknown"
                 available = full_models.get(provider, [{"model": default_model, "label": default_model}])
