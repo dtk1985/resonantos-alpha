@@ -79,6 +79,19 @@ open http://localhost:19100                                # 3. Open Mission Con
 
 ---
 
+## 🔄 Updating
+
+Already installed? Get the latest:
+
+```bash
+cd ~/resonantos-alpha
+git pull origin main
+```
+
+If the dashboard is running, restart it after pulling to pick up changes.
+
+---
+
 ## 🏗️ Architecture
 
 ```
