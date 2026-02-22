@@ -65,16 +65,16 @@ A social contract between human and AI. The human is sovereign — the AI amplif
 3. Installs R-Memory & R-Awareness extensions into OpenClaw
 4. Sets up the SSoT template structure (L0–L4)
 5. Configures keyword triggers for contextual injection
-6. Installs the Dashboard and its dependencies
+6. Installs the Dashboard and its dependencies inside a virtual environment
 
 </details>
 
 **After install:**
 
 ```bash
-openclaw gateway start                                    # 1. Start OpenClaw
-cd ~/resonantos-alpha/dashboard && python3 server_v2.py   # 2. Launch Dashboard
-open http://localhost:19100                                # 3. Open Mission Control
+openclaw gateway start                                              # 1. Start OpenClaw
+cd ~/resonantos-alpha/dashboard && ./venv/bin/python server_v2.py   # 2. Launch Dashboard
+open http://localhost:19100                                         # 3. Open Mission Control
 ```
 
 ---
