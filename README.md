@@ -21,7 +21,7 @@
 **Prerequisites:** Node.js 18+ · Python 3 · Git
 
 ```bash
-git clone https://github.com/ManoloRemiddi/resonantos-alpha.git ~/resonantos-alpha
+git clone https://github.com/dtk1985/resonantos-alpha.git ~/resonantos-alpha
 node ~/resonantos-alpha/install.js
 ```
 
