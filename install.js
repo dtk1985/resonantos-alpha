@@ -158,10 +158,14 @@ writeJsonIfMissing(
 
 // 7. Dashboard dependencies
 log("Installing dashboard dependencies...");
+const venvDir = path.join(INSTALL_DIR, "dashboard", "venv");
+if (!fs.existsSync(venvDir)) {
+  run(`${python} -m venv "${venvDir}"`);
+}
 try {
-  run(`${pip} install -q flask flask-cors psutil websocket-client`, { cwd: path.join(INSTALL_DIR, "dashboard") });
+  run(`"${venvDir}/bin/pip" install -q flask flask-cors psutil websocket-client`);
 } catch {
-  run(`${pip} install flask flask-cors psutil websocket-client`, { cwd: path.join(INSTALL_DIR, "dashboard") });
+  run(`"${venvDir}/bin/pip" install flask flask-cors psutil websocket-client`);
 }
 ok("Dashboard ready");
 
@@ -179,7 +183,7 @@ log(`
 Next steps:
   1. Edit ~/resonantos-alpha/dashboard/config.json with your Solana addresses
   2. Start OpenClaw:  openclaw gateway start
-  3. Start Dashboard: cd ~/resonantos-alpha/dashboard && ${python} server_v2.py
+  3. Start Dashboard: cd ~/resonantos-alpha/dashboard && ./venv/bin/python server_v2.py
   4. Open http://localhost:19100
 
 Docs: https://github.com/ManoloRemiddi/resonantos-alpha
